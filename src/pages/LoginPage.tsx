@@ -271,7 +271,7 @@ export const LoginPage = () => {
         <div className="mt-4 text-center text-xs text-[#537292] dark:text-slate-400">
           <span>Mật khẩu mặc định cho các tài khoản: </span>
           <span className="font-mono text-[#305070] dark:text-slate-300 font-semibold">[role]123</span> (VD:{' '}
-          <code className="text-[#305070] dark:text-slate-300 font-semibold">admin123</code>, <code className="text-[#305070] dark:text-slate-300 font-semibold">retail123</code>)
+          <code className="text-[#305070] dark:text-slate-300 font-semibold">admin123</code>, <code className="text-[#305070] dark:text-slate-300 font-semibold">user123</code>)
         </div>
       </div>
     </div>

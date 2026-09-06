@@ -8,6 +8,7 @@ import { AdminDashboard } from './pages/AdminDashboard';
 import { RetailDashboard } from './pages/RetailDashboard';
 import { TechnicalDashboard } from './pages/TechnicalDashboard';
 import { AccountsDashboard } from './pages/AccountsDashboard';
+import { UserDashboard } from './pages/UserDashboard';
 import { Toaster } from './components/ui/sonner';
 import type { RoleType } from './types/nexus';
 
@@ -24,6 +25,7 @@ function RootIndexRedirect() {
     retail: '/retail',
     technical: '/technical',
     accounts: '/accounts',
+    user: '/user',
   };
 
   return <Navigate to={roleRoutes[currentUser.role]} replace />;
@@ -80,6 +82,16 @@ export default function App() {
                 element={
                   <ProtectedRoute requiredRole="accounts">
                     <AccountsDashboard />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* 5. Customer / User Dashboard - Isolated & Protected */}
+              <Route
+                path="/user/*"
+                element={
+                  <ProtectedRoute requiredRole="user">
+                    <UserDashboard />
                   </ProtectedRoute>
                 }
               />

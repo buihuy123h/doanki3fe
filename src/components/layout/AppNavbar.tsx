@@ -64,6 +64,12 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({
           icon: Calculator,
           badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
         };
+      case 'user':
+        return {
+          label: 'Customer Portal',
+          icon: User,
+          badgeColor: 'bg-purple-500/20 text-purple-300 border-purple-500/30',
+        };
       default:
         return null;
     }
@@ -131,10 +137,6 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({
                 <span>{roleMeta?.label}</span>
               </div>
 
-              {/* User Profile Info */}
-              <div className="text-right hidden sm:block">
-                <div className="text-xs font-bold text-white">{currentUser.name}</div>
-                <div className="text-[11px] text-slate-400">{currentUser.title}</div>
               {/* User Profile Info & Avatar Box */}
               <div className="flex items-center p-1.5 pr-2 bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700 rounded-full transition shadow-sm">
                 <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-white font-bold text-sm mr-3 shadow-inner ring-2 ring-slate-800">
@@ -154,16 +156,6 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({
                   <LogOut className="h-4 w-4 ml-0.5" />
                 </button>
               </div>
-
-              {/* Prominent Logout Button */}
-              <button
-                onClick={handleLogout}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-rose-300 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 transition shadow-sm active:scale-95"
-                title="Đăng xuất khỏi phiên làm việc để chuyển role"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                <span>Đăng xuất</span>
-              </button>
             </div>
           ) : (
             <button
@@ -173,7 +165,6 @@ export const AppNavbar: React.FC<AppNavbarProps> = ({
               Đăng nhập
             </button>
           )}
-        </div>
         </div>
       </div>
     </header>

@@ -25,6 +25,7 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ requiredRole, ch
       retail: '/retail',
       technical: '/technical',
       accounts: '/accounts',
+      user: '/user',
     };
     return <Navigate to={roleRoutes[currentUser.role]} replace />;
   }
