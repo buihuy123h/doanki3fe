@@ -1,0 +1,61 @@
+/* Nexus Service Marketing System - Global Styles */
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+/* Custom subtle scrollbars for high-density tables and technical grids */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(150, 150, 150, 0.3);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(150, 150, 150, 0.5);
+}
+
+/* Monospace number figures for financial/technical alignment */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Smooth Tab & Feature Transition Animations */
+@keyframes tabFadeInSlide {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tab-content-animate {
+  animation: tabFadeInSlide 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.sidebar-tab-btn {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.sidebar-tab-btn:hover {
+  transform: translateX(3px);
+}
+
+.sidebar-tab-btn:active {
+  transform: scale(0.97);
+}
