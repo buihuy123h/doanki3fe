@@ -1,50 +1,36 @@
 import { Routes, Route, Navigate } from 'react-router';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import { NexusProvider } from './context/NexusContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { LanguageProvider } from './context/LanguageContext';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { IndexPage } from './pages/IndexPage';
 import { LoginPage } from './pages/LoginPage';
+import { RegisterPage } from './pages/RegisterPage';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { RetailDashboard } from './pages/RetailDashboard';
 import { TechnicalDashboard } from './pages/TechnicalDashboard';
 import { AccountsDashboard } from './pages/AccountsDashboard';
 import { UserDashboard } from './pages/UserDashboard';
 import { Toaster } from './components/ui/sonner';
-import type { RoleType } from './types/nexus';
-
-// Root index redirector based on authentication and role
-function RootIndexRedirect() {
-  const { currentUser, isAuthenticated } = useAuth();
-
-  if (!isAuthenticated || !currentUser) {
-    return <Navigate to="/login" replace />;
-  }
-
-  const roleRoutes: Record<RoleType, string> = {
-    admin: '/admin',
-    retail: '/retail',
-    technical: '/technical',
-    accounts: '/accounts',
-    user: '/user',
-  };
-
-  return <Navigate to={roleRoutes[currentUser.role]} replace />;
-}
 
 export default function App() {
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <NexusProvider>
+    <LanguageProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <NexusProvider>
           <div className="h-screen w-screen overflow-hidden flex flex-col bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] antialiased selection:bg-sky-500 selection:text-white transition-colors duration-300">
           {/* Role-isolated Routes */}
           <div className="flex-1 h-full overflow-hidden">
             <Routes>
-              {/* Public Authentication Page (No Registration) */}
-              <Route path="/login" element={<LoginPage />} />
+              {/* Public Product Introduction & Landing Index Page */}
+              <Route path="/" element={<IndexPage />} />
+              <Route path="/home" element={<IndexPage />} />
 
-              {/* Root index redirects to login or active role dashboard */}
-              <Route path="/" element={<RootIndexRedirect />} />
+              {/* Public Authentication Page */}
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
 
               {/* 1. Admin (Manager) Dashboard - Isolated & Protected */}
               <Route
@@ -101,15 +87,17 @@ export default function App() {
             </Routes>
           </div>
 
-          {/* Global Toast Notifications */}
+          {/* Global Toast Notifications (1s auto dismiss) */}
           <Toaster
             position="top-right"
             offset="76px"
             richColors
+            duration={1000}
           />
         </div>
       </NexusProvider>
     </AuthProvider>
   </ThemeProvider>
+</LanguageProvider>
   );
 };

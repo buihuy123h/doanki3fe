@@ -23,6 +23,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useNexus } from '../context/NexusContext';
+import { useLanguage } from '../context/LanguageContext';
 import { DashboardLayout, type NavItem } from '../components/layout/DashboardLayout';
 import {
   Receipt,
@@ -38,10 +39,11 @@ import {
 import type { Bill, PaymentRecord } from '../types/nexus';
 import { toast } from 'sonner';
 
-type AccountsTab = 'bill-generation' | 'payment-updates' | 'charge-settings';
+type AccountsTab = 'bill-generation' | 'payment-updates' | 'charge-settings' | 'settings';
 
 export const AccountsDashboard: React.FC = () => {
   const { connections, bills, generateBill, recordPayment, settings, updateSettings } = useNexus();
+  const { t } = useLanguage();
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<AccountsTab>('bill-generation');
@@ -216,22 +218,24 @@ export const AccountsDashboard: React.FC = () => {
   const accountsNavItems: NavItem[] = [
     {
       id: 'bill-generation',
-      label: 'Tạo hóa đơn cước',
+      label: t.accountsNav.billGeneration,
       icon: Receipt,
       badge: '12.24%',
       badgeColor: 'bg-blue-100 text-blue-800',
     },
     {
       id: 'payment-updates',
-      label: 'Cập nhật thanh toán',
+      label: t.accountsNav.paymentUpdates,
       icon: CreditCard,
       badge: bills.filter((b) => b.status !== 'Paid').length,
     },
     {
       id: 'charge-settings',
-      label: 'Cài đặt biểu cước & Thuế',
+      label: t.accountsNav.chargeSettings,
       icon: Settings,
     },
+    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'settings', label: t.accountsNav.settings, icon: Settings },
   ];
 
   return (
@@ -239,10 +243,10 @@ export const AccountsDashboard: React.FC = () => {
       activeTab={activeTab}
       onTabChange={(tab) => setActiveTab(tab as AccountsTab)}
       navItems={accountsNavItems}
-      roleBadgeTitle="Finance & Billing (Accounts Dept)"
+      roleBadgeTitle={t.roles.accounts}
       pageTitle={accountsNavItems.find((t) => t.id === activeTab)?.label}
       primaryAction={{
-        label: '+ New Invoice',
+        label: t.actions.newInvoice,
         onClick: () => setActiveTab('bill-generation'),
         icon: Plus,
       }}
@@ -1032,6 +1036,16 @@ export const AccountsDashboard: React.FC = () => {
           </div>
         </div>
       )}
-    </DashboardLayout>
+    
+            {activeTab === 'settings' && (
+              <div className="rounded-xl bg-white dark:bg-[#1E3349] p-8 text-center shadow-sm border border-[#CCE4F7] dark:border-[#253D56]">
+                <Settings className="h-12 w-12 mx-auto text-[#7899B8] dark:text-[#5E7F9F] mb-4" />
+                <h3 className="text-lg font-bold text-[#0F1D2B] dark:text-white mb-2">System Settings</h3>
+                <p className="text-[#537292] dark:text-[#8DB0D4]">Configuration preferences and system settings are under active maintenance...</p>
+                <h3 className="text-lg font-bold text-[#0F1D2B] dark:text-white mb-2">{t.dashboard.settingsTitle}</h3>
+                <p className="text-[#537292] dark:text-[#8DB0D4]">{t.dashboard.settingsDesc}</p>
+              </div>
+            )}
+          </DashboardLayout>
   );
 };

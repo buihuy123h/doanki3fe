@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
+import { useLanguage } from '../../context/LanguageContext';
+import { LanguageToggle } from './LanguageToggle';
 import {
   Menu,
   Search,
@@ -61,7 +63,12 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 }) => {
   const { currentUser, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { t, language } = useLanguage();
   const navigate = useNavigate();
+
+  // Search expanding state
+  const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Sidebar open/closed state with 0.3s transition (persisted in localStorage)
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
@@ -77,6 +84,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     setIsSidebarOpen((prev) => !prev);
   };
 
+  // Tự động giấu sidebar khi bấm ra vùng main (chỉ áp dụng trên thiết bị di động / tablet)
+  const handleMainClick = () => {
+    if (isSidebarOpen && window.innerWidth <= 768) {
+      setIsSidebarOpen(false);
+    }
+  };
+
   // Live ticking date and time for the greeting banner
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -90,21 +104,21 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   // Format greeting based on hour (e.g. Good morning, Good afternoon, Good evening)
   const getGreeting = () => {
     const hour = currentTime.getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (hour < 12) return t.greetings.morning;
+    if (hour < 18) return t.greetings.afternoon;
+    return t.greetings.evening;
   };
 
-  // Format date and time matching screenshot style: "Sunday, September 6, 2026 at 04:49:35 PM"
+  // Format date and time matching screenshot style: localized for EN/VI
   const formattedDateTime =
-    currentTime.toLocaleDateString('en-US', {
+    currentTime.toLocaleDateString(language === 'vi' ? 'vi-VN' : 'en-US', {
       weekday: 'long',
       year: 'numeric',
       month: 'long',
       day: 'numeric',
     }) +
-    ' at ' +
-    currentTime.toLocaleTimeString('en-US', {
+    (language === 'vi' ? ' lúc ' : ' at ') +
+    currentTime.toLocaleTimeString(language === 'vi' ? 'vi-VN' : 'en-US', {
       hour: '2-digit',
       minute: '2-digit',
       second: '2-digit',
@@ -113,32 +127,29 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
   const handleLogout = () => {
     logout();
-    toast.info('Đã đăng xuất khỏi phiên làm việc.');
+    toast.info(language === 'vi' ? 'Đã đăng xuất khỏi phiên làm việc.' : 'Signed out successfully.');
     navigate('/login', { replace: true });
   };
 
   // Resolve current active item for page title fallback
   const activeNavItem = navItems.find((item) => item.id === activeTab);
-  const currentTitle = pageTitle || activeNavItem?.label || 'Dashboard';
+  const currentTitle = pageTitle || activeNavItem?.label || t.common.dashboard;
 
-  const getRoleIcon = () => {
-    if (!currentUser) return User;
+  const renderRoleIcon = (className: string) => {
+    if (!currentUser) return <User className={className} />;
     switch (currentUser.role) {
       case 'admin':
-        return ShieldCheck;
+        return <ShieldCheck className={className} />;
       case 'retail':
-        return ShoppingBag;
+        return <ShoppingBag className={className} />;
       case 'technical':
-        return Wrench;
+        return <Wrench className={className} />;
       case 'accounts':
-        return Calculator;
+        return <Calculator className={className} />;
       default:
-        return User;
+        return <User className={className} />;
     }
   };
-
-  const RoleIcon = getRoleIcon();
-
   return (
     <div className="flex h-screen w-full bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] font-sans antialiased overflow-hidden transition-colors duration-300">
       {/* ------------------------------------------------------------- */}
@@ -213,12 +224,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           </nav>
 
           {/* Sidebar Footer / Current User Badge */}
-          <div className="p-3.5 border-t border-[#CCE4F7] dark:border-[#253D56] bg-[#E5F2FC]/70 dark:bg-[#111E2C]/70 text-xs text-[#537292] dark:text-[#88A9CB] space-y-1 shrink-0">
+          <div className="p-3.5 border-t border-[#CCE4F7] dark:border-[#253D56] bg-[#E5F2FC]/70 dark:bg-[#111E2C]/70 text-xs text-[#537292] dark:text-[#88A9CB] space-y-1.5 shrink-0">
             <div className="flex items-center space-x-2 text-[#1B2D40] dark:text-[#E0F1FF] font-semibold truncate">
-              <RoleIcon className="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
-              <span className="truncate">{roleBadgeTitle || currentUser?.title || 'Nexus User'}</span>
+              {renderRoleIcon("h-3.5 w-3.5 text-sky-600 dark:text-sky-400")}
+              <span className="truncate">{roleBadgeTitle || (currentUser?.role && t.roles[currentUser.role]) || currentUser?.title || 'Nexus User'}</span>
             </div>
-            <div className="text-[11px] text-[#6B8FB5] dark:text-[#5E7F9F]">Station Ready • v2.4</div>
+            <div className="text-[10px] text-[#6B8FB5] dark:text-[#5E7F9F] flex items-center justify-between pt-0.5">
+              <span>{t.common.stationReady}</span>
+              <span>v2.4</span>
+            </div>
           </div>
         </div>
       </aside>
@@ -226,7 +240,15 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       {/* ------------------------------------------------------------- */}
       {/* 2. RIGHT COLUMN: FIXED HEADER + SCROLLABLE MAIN               */}
       {/* ------------------------------------------------------------- */}
-      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
+        {/* Mobile & Tablet Backdrop Overlay when sidebar is open */}
+        {isSidebarOpen && (
+          <div
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-25 md:hidden transition-opacity duration-300"
+            title="Bấm vào đây để giấu sidebar"
+          />
+        )}
         {/* Top Header Bar - Fixed height, never scrolls */}
         <header className="shrink-0 h-16 bg-white/95 dark:bg-[#172738]/95 border-b border-[#CCE4F7] dark:border-[#253D56] flex items-center justify-between px-4 sm:px-6 shadow-xs z-20 backdrop-blur-md transition-colors duration-300">
           {/* Left: 3-Stripes Hamburger Toggle + Current Page Title */}
@@ -249,29 +271,67 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             {/* Custom Header Actions if passed */}
             {customHeaderActions}
 
-            {/* Circular Search Button */}
-            <button
-              onClick={() => toast.info('Tìm kiếm nhanh: Sử dụng các ô lọc trong trang bên dưới')}
-              className="h-9 w-9 rounded-full bg-[#EDF6FF] dark:bg-[#1E3349] hover:bg-[#DCEEFE] dark:hover:bg-[#253E58] text-[#1B2D40] dark:text-[#E0F1FF] border border-[#CCE4F7] dark:border-[#253D56] flex items-center justify-center transition shadow-xs"
-              title="Tìm kiếm"
+            {/* Expandable Search Input */}
+            <div
+              className={`flex items-center h-9 rounded-full transition-all duration-300 overflow-hidden shadow-xs border ${
+                isSearchExpanded
+                  ? 'w-48 sm:w-64 bg-white dark:bg-[#101C29] border-[#CCE4F7] dark:border-[#253D56] px-1'
+                  : 'w-9 bg-[#EDF6FF] dark:bg-[#1E3349] border-[#CCE4F7] dark:border-[#253D56] hover:bg-[#DCEEFE] dark:hover:bg-[#253E58]'
+              }`}
             >
-              <Search className="h-4 w-4" />
-            </button>
+              <button
+                onClick={() => {
+                  if (isSearchExpanded && searchQuery) {
+                    toast.info(`Tìm kiếm: ${searchQuery}`);
+                  } else {
+                    setIsSearchExpanded(!isSearchExpanded);
+                  }
+                }}
+                className={`shrink-0 rounded-full flex items-center justify-center text-[#1B2D40] dark:text-[#E0F1FF] transition-colors ${
+                  isSearchExpanded ? 'h-7 w-7 hover:bg-[#EDF6FF] dark:hover:bg-[#253E58] ml-1' : 'h-full w-full'
+                }`}
+                title={t.common.search}
+              >
+                <Search className="h-4 w-4" />
+              </button>
+              <input
+                type="text"
+                placeholder={t.common.searchPlaceholder}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchQuery) {
+                    toast.info(`${t.common.search}: ${searchQuery}`);
+                  } else if (e.key === 'Escape') {
+                    setIsSearchExpanded(false);
+                  }
+                }}
+                onBlur={() => {
+                  if (!searchQuery) setIsSearchExpanded(false);
+                }}
+                className={`bg-transparent border-none outline-none text-sm text-[#0F1D2B] dark:text-white placeholder-[#7899B8] dark:placeholder-slate-500 transition-all duration-300 ${
+                  isSearchExpanded ? 'w-full opacity-100 px-2' : 'w-0 opacity-0 px-0'
+                }`}
+              />
+            </div>
 
             {/* Circular Settings Button */}
             <button
-              onClick={() => toast.info('Cài đặt hệ thống Nexus SMS')}
+              onClick={() => onTabChange('settings')}
               className="h-9 w-9 rounded-full bg-[#EDF6FF] dark:bg-[#1E3349] hover:bg-[#DCEEFE] dark:hover:bg-[#253E58] text-[#1B2D40] dark:text-[#E0F1FF] border border-[#CCE4F7] dark:border-[#253D56] flex items-center justify-center transition shadow-xs"
-              title="Cài đặt"
+              title={t.common.settings}
             >
               <Settings className="h-4 w-4" />
             </button>
 
-            {/* Circular Theme Toggle Button (Light/Dark Mode) - Cạnh nút Settings */}
+            {/* Language Switcher Button (EN / VI) */}
+            <LanguageToggle />
+
+            {/* Circular Theme Toggle Button (Light/Dark Mode) */}
             <button
               onClick={toggleTheme}
               className="h-9 w-9 rounded-full bg-[#EDF6FF] dark:bg-[#1E3349] hover:bg-[#DCEEFE] dark:hover:bg-[#253E58] text-[#1B2D40] dark:text-[#E0F1FF] border border-[#CCE4F7] dark:border-[#253D56] flex items-center justify-center transition-all duration-200 shadow-xs hover:scale-105 active:scale-95 group"
-              title={theme === 'dark' ? 'Chuyển sang giao diện Sáng (#E0F1FF)' : 'Chuyển sang giao diện Tối (#1B2D40)'}
+              title={theme === 'dark' ? t.common.themeLight : t.common.themeDark}
             >
               {theme === 'dark' ? (
                 <Sun className="h-4 w-4 text-amber-400 group-hover:rotate-45 transition-transform" />
@@ -282,9 +342,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
 
             {/* Circular Notification Bell with Badge Count 8 */}
             <button
-              onClick={() => toast.info('Hệ thống có 8 thông báo mới chưa đọc')}
+              onClick={() => toast.info(`${t.common.notifications}: 8 unread alerts`)}
               className="h-9 w-9 rounded-full bg-[#EDF6FF] dark:bg-[#1E3349] hover:bg-[#DCEEFE] dark:hover:bg-[#253E58] text-[#1B2D40] dark:text-[#E0F1FF] border border-[#CCE4F7] dark:border-[#253D56] flex items-center justify-center transition shadow-xs relative"
-              title="Thông báo (8)"
+              title={`${t.common.notifications} (8)`}
             >
               <Bell className="h-4 w-4" />
               <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white ring-2 ring-white">
@@ -305,7 +365,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 <button
                   onClick={handleLogout}
                   className="flex items-center justify-center h-7 w-7 rounded-full bg-rose-500/10 hover:bg-rose-500/25 text-rose-600 dark:text-rose-400 transition active:scale-95"
-                  title="Đăng xuất khỏi phiên làm việc"
+                  title={t.common.logout}
                 >
                   <LogOut className="h-3.5 w-3.5" />
                 </button>
@@ -317,7 +377,10 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         {/* ------------------------------------------------------------- */}
         {/* 3. MAIN DASHBOARD CONTENT AREA - THE ONLY SCROLLABLE AREA     */}
         {/* ------------------------------------------------------------- */}
-        <main className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 bg-[#E0F1FF] dark:bg-[#1B2D40] transition-colors duration-300">
+        <main
+          onClick={handleMainClick}
+          className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 bg-[#E0F1FF] dark:bg-[#1B2D40] transition-colors duration-300"
+        >
           {/* Greeting Banner (matches "Good afternoon, Admin" layout in image) */}
           <div className="pb-2 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
@@ -333,11 +396,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             {/* Action buttons (matches "Export" and "+ New Report" buttons in screenshot) */}
             <div className="flex items-center space-x-2.5">
               <button
-                onClick={exportAction?.onClick || (() => toast.success('Đang xuất báo cáo tổng quan...'))}
+                onClick={exportAction?.onClick || (() => toast.success(language === 'vi' ? 'Đang xuất báo cáo tổng quan...' : 'Exporting overview report...'))}
                 className="flex items-center space-x-1.5 px-3.5 py-2 rounded-lg text-xs font-semibold bg-white dark:bg-[#1E3349] hover:bg-sky-50 dark:hover:bg-[#253E58] border border-[#CCE4F7] dark:border-[#253D56] text-[#1B2D40] dark:text-[#E0F1FF] shadow-xs transition active:scale-95"
               >
                 <Download className="h-3.5 w-3.5 text-[#537292] dark:text-[#8DB0D4]" />
-                <span>{exportAction?.label || 'Export'}</span>
+                <span>{exportAction?.label || t.actions.export}</span>
               </button>
 
               {primaryAction ? (
@@ -354,11 +417,11 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
                 </button>
               ) : (
                 <button
-                  onClick={() => toast.info('Tạo báo cáo mới')}
+                  onClick={() => toast.info(t.actions.newReport)}
                   className="flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-semibold bg-sky-600 hover:bg-sky-700 text-white shadow-xs transition active:scale-95"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  <span>+ New Report</span>
+                  <span>{t.actions.newReport}</span>
                 </button>
               )}
             </div>

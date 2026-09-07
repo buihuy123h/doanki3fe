@@ -1,28 +1,6 @@
-/**
- * =======================================================================
- * NEXUS SERVICE MARKETING SYSTEM - ADMIN (MANAGER) DASHBOARD
- * =======================================================================
- * 
- * ROLE: Admin / General Manager
- * PURPOSE: Executive oversight and management of human resources, suppliers,
- *          retail store branches, stock inventories, and service plan tariffs.
- * 
- * LAYOUT STRUCTURE:
- * 1. AdminHeader: Breadcrumb indicator, active manager profile badge, date/time.
- * 2. AdminSidebar: Tabbed vertical navigation for:
- *    - Overview (Summary KPIs: Total Retail Shops, Active Employees, Revenue)
- *    - Employee Management (Add/Edit/Delete Employee modals & datatable)
- *    - Stock / Inventory (Hardware supplies, reorder indicators)
- *    - Vendor Management (Add/Edit/Delete Vendor modals & contact directory)
- *    - Retail Shops (Outlets, locations, managers & connection stats)
- *    - Plan Management (Broadband, Dial-Up, Landline tariffs & pricing)
- * 3. MainContentArea: Dynamic section rendered based on the active sidebar selection.
- * 4. Modals / Dialogs: Clean administrative forms for creating & modifying records.
- * =======================================================================
- */
-
 import React, { useState } from 'react';
 import { useNexus } from '../context/NexusContext';
+import { useLanguage } from '../context/LanguageContext';
 import { DashboardLayout, type NavItem } from '../components/layout/DashboardLayout';
 import {
   Users,
@@ -41,11 +19,12 @@ import {
   Wifi,
   Radio,
   X,
+  Settings,
 } from 'lucide-react';
 import type { Employee, Vendor, Plan } from '../types/nexus';
 import { toast } from 'sonner';
 
-type AdminTab = 'overview' | 'employees' | 'stock' | 'vendors' | 'shops' | 'plans';
+type AdminTab = 'overview' | 'employees' | 'stock' | 'vendors' | 'shops' | 'plans' | 'settings';
 
 export const AdminDashboard: React.FC = () => {
   const {
@@ -64,6 +43,7 @@ export const AdminDashboard: React.FC = () => {
     deletePlan,
     inventory,
   } = useNexus();
+  const { t, language } = useLanguage();
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<AdminTab>('overview');
@@ -305,18 +285,19 @@ export const AdminDashboard: React.FC = () => {
   });
 
   const adminNavItems: NavItem[] = [
-    { id: 'overview', label: 'Dashboard', icon: TrendingUp },
-    { id: 'employees', label: 'Employee Management', icon: Users, badge: employees.length },
+    { id: 'overview', label: t.adminNav.overview, icon: TrendingUp },
+    { id: 'employees', label: t.adminNav.employees, icon: Users, badge: employees.length },
     {
       id: 'stock',
-      label: 'Stock / Inventory',
+      label: t.adminNav.stock,
       icon: Package,
-      badge: lowStockItems.length > 0 ? `${lowStockItems.length} low` : undefined,
+      badge: lowStockItems.length > 0 ? (language === 'vi' ? `${lowStockItems.length} sắp hết` : `${lowStockItems.length} low`) : undefined,
       badgeColor: 'bg-amber-100 text-amber-800',
     },
-    { id: 'vendors', label: 'Vendor Management', icon: Truck, badge: vendors.length },
-    { id: 'shops', label: 'Retail Shops', icon: Store, badge: retailShops.length },
-    { id: 'plans', label: 'Plan Management', icon: Layers, badge: plans.length },
+    { id: 'vendors', label: t.adminNav.vendors, icon: Truck, badge: vendors.length },
+    { id: 'shops', label: t.adminNav.shops, icon: Store, badge: retailShops.length },
+    { id: 'plans', label: t.adminNav.plans, icon: Layers, badge: plans.length },
+    { id: 'settings', label: t.adminNav.settings, icon: Settings },
   ];
 
   return (
@@ -324,20 +305,20 @@ export const AdminDashboard: React.FC = () => {
       activeTab={activeTab}
       onTabChange={(tab) => setActiveTab(tab as AdminTab)}
       navItems={adminNavItems}
-      roleBadgeTitle="Manager Workspace (Admin)"
+      roleBadgeTitle={t.roles.admin}
       pageTitle={
         activeTab === 'overview'
-          ? 'Dashboard'
+          ? t.adminNav.overview
           : adminNavItems.find((t) => t.id === activeTab)?.label
       }
       primaryAction={
         activeTab === 'employees'
-          ? { label: 'Add Employee', onClick: () => handleOpenEmployeeModal() }
+          ? { label: t.actions.addEmployee, onClick: () => handleOpenEmployeeModal() }
           : activeTab === 'vendors'
-          ? { label: 'Add Vendor', onClick: () => handleOpenVendorModal() }
+          ? { label: t.actions.addVendor, onClick: () => handleOpenVendorModal() }
           : activeTab === 'plans'
-          ? { label: 'Add Plan', onClick: () => handleOpenPlanModal() }
-          : { label: '+ New Report', onClick: () => toast.success('Đang tạo báo cáo tổng hợp mới...') }
+          ? { label: t.actions.addPlan, onClick: () => handleOpenPlanModal() }
+          : { label: t.actions.newReport, onClick: () => toast.success(language === 'vi' ? 'Đang tạo báo cáo tổng hợp mới...' : 'Creating summary report...') }
       }
     >
       {/* ------------------------------------------------------------- */}
@@ -1488,6 +1469,16 @@ export const AdminDashboard: React.FC = () => {
           </div>
         </div>
       )}
-    </DashboardLayout>
+    
+            {activeTab === 'settings' && (
+              <div className="rounded-xl bg-white dark:bg-[#1E3349] p-8 text-center shadow-sm border border-[#CCE4F7] dark:border-[#253D56]">
+                <Settings className="h-12 w-12 mx-auto text-[#7899B8] dark:text-[#5E7F9F] mb-4" />
+                <h3 className="text-lg font-bold text-[#0F1D2B] dark:text-white mb-2">System Settings</h3>
+                <p className="text-[#537292] dark:text-[#8DB0D4]">Configuration preferences and system settings are under active maintenance...</p>
+                <h3 className="text-lg font-bold text-[#0F1D2B] dark:text-white mb-2">{t.dashboard.settingsTitle}</h3>
+                <p className="text-[#537292] dark:text-[#8DB0D4]">{t.dashboard.settingsDesc}</p>
+              </div>
+            )}
+          </DashboardLayout>
   );
 };

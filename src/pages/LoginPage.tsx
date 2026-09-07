@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
+import { LanguageToggle } from '../components/layout/LanguageToggle';
 import type { RoleType } from '../types/nexus';
 import {
   Layers,
@@ -12,6 +14,7 @@ import {
   Wrench,
   Calculator,
   ArrowRight,
+  ArrowLeft,
   Eye,
   EyeOff,
   Sparkles,
@@ -24,6 +27,7 @@ import { toast } from 'sonner';
 export const LoginPage = () => {
   const { login, quickLoginAsRole, isAuthenticated, currentUser } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { t } = useLanguage();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -88,14 +92,28 @@ export const LoginPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden transition-colors duration-300">
-      {/* Top right Theme Toggle Button */}
-      <div className="absolute top-4 right-4 z-50">
+    <div className="h-full w-full overflow-y-auto bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] flex flex-col justify-start sm:justify-center py-10 sm:py-16 px-4 sm:px-6 lg:px-8 relative transition-colors duration-300">
+      {/* Top left Back to Home Button */}
+      <div className="fixed top-4 left-4 z-50">
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="h-10 px-3.5 rounded-full bg-white/85 dark:bg-[#152434]/85 hover:bg-white dark:hover:bg-[#1E3349] text-[#1B2D40] dark:text-[#E0F1FF] border border-[#CCE4F7] dark:border-[#253D56] flex items-center space-x-1.5 transition shadow-md hover:scale-105 active:scale-95 text-xs font-semibold backdrop-blur-md"
+          title={t.common.home}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          <span className="hidden sm:inline">{t.common.home}</span>
+        </button>
+      </div>
+
+      {/* Top right Controls: Language Toggle & Theme Toggle */}
+      <div className="fixed top-4 right-4 z-50 flex items-center space-x-2">
+        <LanguageToggle />
         <button
           type="button"
           onClick={toggleTheme}
           className="h-10 w-10 rounded-full bg-white/85 dark:bg-[#152434]/85 hover:bg-white dark:hover:bg-[#1E3349] text-[#1B2D40] dark:text-[#E0F1FF] border border-[#CCE4F7] dark:border-[#253D56] flex items-center justify-center transition shadow-md hover:scale-105 active:scale-95 group backdrop-blur-md"
-          title={theme === 'dark' ? 'Chuyển sang giao diện Sáng (#E0F1FF)' : 'Chuyển sang giao diện Tối (#1B2D40)'}
+          title={theme === 'dark' ? t.common.themeLight : t.common.themeDark}
         >
           {theme === 'dark' ? (
             <Sun className="h-5 w-5 text-amber-400 group-hover:rotate-45 transition-transform" />
@@ -106,24 +124,23 @@ export const LoginPage = () => {
       </div>
 
       {/* Background ambient lighting */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-slate-950 to-slate-950" />
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#1e293b0a_1px,transparent_1px),linear-gradient(to_bottom,#1e293b0a_1px,transparent_1px)] bg-[size:3rem_3rem]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-200/40 via-[#E0F1FF] to-[#E0F1FF] dark:from-blue-900/20 dark:via-[#1B2D40] dark:to-[#1B2D40]" />
-      <div className="absolute inset-0 bg-[linear-gradient(to_right,#0284c70d_1px,transparent_1px),linear-gradient(to_bottom,#0284c70d_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#1e293b0a_1px,transparent_1px),linear-gradient(to_bottom,#1e293b0a_1px,transparent_1px)] bg-[size:3rem_3rem]" />
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-900/20 via-slate-950 to-slate-950" />
+      <div className="fixed inset-0 pointer-events-none bg-[linear-gradient(to_right,#1e293b0a_1px,transparent_1px),linear-gradient(to_bottom,#1e293b0a_1px,transparent_1px)] bg-[size:3rem_3rem]" />
+      <div className="fixed inset-0 pointer-events-none bg-[radial-gradient(circle_at_top,_var(--tw-gradient-stops))] from-blue-200/40 via-[#E0F1FF] to-[#E0F1FF] dark:from-blue-900/20 dark:via-[#1B2D40] dark:to-[#1B2D40]" />
+      <div className="fixed inset-0 pointer-events-none bg-[linear-gradient(to_right,#0284c70d_1px,transparent_1px),linear-gradient(to_bottom,#0284c70d_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#1e293b0a_1px,transparent_1px),linear-gradient(to_bottom,#1e293b0a_1px,transparent_1px)] bg-[size:3rem_3rem]" />
 
-      <div className="relative sm:mx-auto sm:w-full sm:max-w-md px-4">
+      <div className="relative sm:mx-auto sm:w-full sm:max-w-md px-4 my-auto">
         {/* Brand Header */}
         <div className="text-center space-y-2">
           <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-500 text-white shadow-xl shadow-blue-500/25 mb-2">
             <Layers className="h-8 w-8" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">NEXUS SYSTEM</h1>
           <h1 className="text-3xl font-extrabold tracking-tight text-[#0F1D2B] dark:text-white">NEXUS SYSTEM</h1>
           <p className="text-xs uppercase font-semibold tracking-wider text-sky-600 dark:text-blue-400">
-            Telecom Marketing & Operations Portal
+            {t.auth.loginSubtitle}
           </p>
           <p className="text-sm text-[#537292] dark:text-slate-300 max-w-sm mx-auto">
-            Hệ thống quản lý dịch vụ viễn thông nội bộ. Vui lòng đăng nhập bằng tài khoản được cấp.
+            {t.auth.loginDescription}
           </p>
         </div>
 
@@ -140,7 +157,7 @@ export const LoginPage = () => {
             {/* Email Field */}
             <div>
               <label className="block text-xs font-semibold text-[#305070] dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                Email nhân viên / Tên đăng nhập
+                {t.auth.emailLabel}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-3 h-4 w-4 text-[#7899B8] dark:text-slate-500" />
@@ -159,7 +176,7 @@ export const LoginPage = () => {
             <div>
               <div className="flex items-center justify-between mb-1.5">
                 <label className="block text-xs font-semibold text-[#305070] dark:text-slate-300 uppercase tracking-wider">
-                  Mật khẩu
+                  {t.auth.passwordLabel}
                 </label>
               </div>
               <div className="relative">
@@ -188,18 +205,32 @@ export const LoginPage = () => {
                 type="submit"
                 className="w-full py-2.5 px-4 rounded-xl font-bold text-sm bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white transition shadow-lg shadow-blue-600/30 flex items-center justify-center space-x-2"
               >
-                <span>Đăng nhập hệ thống</span>
+                <span>{t.auth.loginButton}</span>
                 <ArrowRight className="h-4 w-4" />
               </button>
             </div>
           </form>
+
+          {/* Link to Register (Synchronized with RegisterPage) */}
+          {/* Link to Register */}
+          <div className="mt-5 text-center text-xs text-[#537292] dark:text-slate-400">
+            <span>{t.auth.noAccount} </span>
+            <button
+              type="button"
+              onClick={() => navigate('/register')}
+              className="font-bold text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center space-x-1"
+            >
+              <span>{t.auth.registerLink}</span>
+              <ArrowRight className="h-3 w-3" />
+            </button>
+          </div>
 
           {/* Quick 1-Click Role Login Chips (For testing convenience without signup) */}
           <div className="mt-6 pt-6 border-t border-[#CCE4F7] dark:border-slate-800/80">
             <div className="flex items-center justify-between text-xs font-semibold text-[#537292] dark:text-slate-400 mb-3">
               <span className="flex items-center space-x-1.5">
                 <Sparkles className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" />
-                <span>Đăng nhập nhanh theo Role (Demo):</span>
+                <span>{t.auth.quickLoginTitle}</span>
               </span>
             </div>
 
@@ -265,13 +296,6 @@ export const LoginPage = () => {
               </button>
             </div>
           </div>
-        </div>
-
-        {/* Credentials cheat-sheet */}
-        <div className="mt-4 text-center text-xs text-[#537292] dark:text-slate-400">
-          <span>Mật khẩu mặc định cho các tài khoản: </span>
-          <span className="font-mono text-[#305070] dark:text-slate-300 font-semibold">[role]123</span> (VD:{' '}
-          <code className="text-[#305070] dark:text-slate-300 font-semibold">admin123</code>, <code className="text-[#305070] dark:text-slate-300 font-semibold">user123</code>)
         </div>
       </div>
     </div>

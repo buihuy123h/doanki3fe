@@ -23,6 +23,7 @@
 
 import React, { useState } from 'react';
 import { useNexus } from '../context/NexusContext';
+import { useLanguage } from '../context/LanguageContext';
 import { DashboardLayout, type NavItem } from '../components/layout/DashboardLayout';
 import {
   ShoppingBag,
@@ -40,14 +41,16 @@ import {
   ArrowRight,
   Sparkles,
   Plus,
+  Settings,
 } from 'lucide-react';
 import type { ConnectionType, Order } from '../types/nexus';
 import { toast } from 'sonner';
 
-type RetailTab = 'new-order' | 'order-tracking' | 'connection-details' | 'payment-records';
+type RetailTab = 'new-order' | 'order-tracking' | 'connection-details' | 'payment-records' | 'settings';
 
 export const RetailDashboard: React.FC = () => {
   const { plans, placeOrder, orders, connections, bills } = useNexus();
+  const { t } = useLanguage();
 
   // Active navigation tab
   const [activeTab, setActiveTab] = useState<RetailTab>('new-order');
@@ -198,6 +201,12 @@ export const RetailDashboard: React.FC = () => {
     { id: 'order-tracking', label: 'Theo dõi đơn hàng', icon: Clock, badge: orders.length },
     { id: 'connection-details', label: 'Chi tiết thuê bao', icon: Wifi, badge: connections.length },
     { id: 'payment-records', label: 'Hồ sơ thanh toán', icon: CreditCard, badge: bills.length },
+    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'new-order', label: t.retailNav.newOrder, icon: ShoppingBag },
+    { id: 'order-tracking', label: t.retailNav.orderTracking, icon: Clock, badge: orders.length },
+    { id: 'connection-details', label: t.retailNav.connectionDetails, icon: Wifi, badge: connections.length },
+    { id: 'payment-records', label: t.retailNav.paymentRecords, icon: CreditCard, badge: bills.length },
+    { id: 'settings', label: t.retailNav.settings, icon: Settings },
   ];
 
   return (
@@ -205,10 +214,10 @@ export const RetailDashboard: React.FC = () => {
       activeTab={activeTab}
       onTabChange={(tab) => setActiveTab(tab as RetailTab)}
       navItems={retailNavItems}
-      roleBadgeTitle="Retail Outlet (Store Counter)"
+      roleBadgeTitle={t.roles.retail}
       pageTitle={retailNavItems.find((t) => t.id === activeTab)?.label}
       primaryAction={{
-        label: '+ New Order',
+        label: t.actions.newOrder,
         onClick: () => setActiveTab('new-order'),
         icon: Plus,
       }}
@@ -977,6 +986,16 @@ export const RetailDashboard: React.FC = () => {
           </div>
         </div>
       )}
-    </DashboardLayout>
+    
+            {activeTab === 'settings' && (
+              <div className="rounded-xl bg-white dark:bg-[#1E3349] p-8 text-center shadow-sm border border-[#CCE4F7] dark:border-[#253D56]">
+                <Settings className="h-12 w-12 mx-auto text-[#7899B8] dark:text-[#5E7F9F] mb-4" />
+                <h3 className="text-lg font-bold text-[#0F1D2B] dark:text-white mb-2">System Settings</h3>
+                <p className="text-[#537292] dark:text-[#8DB0D4]">Configuration preferences and system settings are under active maintenance...</p>
+                <h3 className="text-lg font-bold text-[#0F1D2B] dark:text-white mb-2">{t.dashboard.settingsTitle}</h3>
+                <p className="text-[#537292] dark:text-[#8DB0D4]">{t.dashboard.settingsDesc}</p>
+              </div>
+            )}
+          </DashboardLayout>
   );
 };

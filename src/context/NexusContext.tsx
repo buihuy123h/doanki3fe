@@ -17,6 +17,7 @@ import type {
 } from '../types/nexus';
 
 // Helper to generate 11-digit Alphanumeric Order ID (e.g. D0000000001)
+// eslint-disable-next-line react-refresh/only-export-components
 export function generateOrderId(type: 'Broadband' | 'Dial-Up' | 'Landline', count: number): string {
   const prefix = type === 'Dial-Up' ? 'D' : type === 'Broadband' ? 'B' : 'L';
   const numPart = String(count).padStart(10, '0');
@@ -24,6 +25,7 @@ export function generateOrderId(type: 'Broadband' | 'Dial-Up' | 'Landline', coun
 }
 
 // Helper to generate 16-digit formatted Account ID (e.g. 8820-4102-9931-1005)
+// eslint-disable-next-line react-refresh/only-export-components
 export function generateAccountId(): string {
   const part = () => Math.floor(1000 + Math.random() * 9000).toString();
   return `${part()}-${part()}-${part()}-${part()}`;
@@ -1142,6 +1144,7 @@ export const NexusProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useNexus = (): NexusContextType => {
   const context = useContext(NexusContext);
   if (!context) {

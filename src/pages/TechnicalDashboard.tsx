@@ -1,27 +1,6 @@
-/**
- * =======================================================================
- * NEXUS SERVICE MARKETING SYSTEM - TECHNICAL STAFF DASHBOARD
- * =======================================================================
- * 
- * ROLE: Field Engineer & NOC Technical Operations Specialist
- * PURPOSE: Managing technical feasibility assessments, telecom infrastructure,
- *          line provisioning, connection lifecycle status toggles, and
- *          physical CPE (Customer Premises Equipment) hardware tracking.
- * 
- * DESIGN LAYOUT:
- * - Technical, grid-focused command-center layout
- * - Monospace telemetry parameters (dBm signal loss, loop meters, MAC addresses)
- * - Real-time color status indicators (Active, Temporarily Inactive, Permanently Inactive)
- * 
- * SIDEBAR NAVIGATION:
- * 1. Order Feasibility Queue (Queue datatable with Feasible / Not Feasible / Connection Provided actions)
- * 2. Connection Manager (16-digit Account ID lookup & 3-way state toggle)
- * 3. Equipment / Product Details (Modem & Router inventory and MAC binding)
- * =======================================================================
- */
-
 import React, { useState } from 'react';
 import { useNexus } from '../context/NexusContext';
+import { useLanguage } from '../context/LanguageContext';
 import { DashboardLayout, type NavItem } from '../components/layout/DashboardLayout';
 import {
   Search,
@@ -34,11 +13,12 @@ import {
   ShieldAlert,
   X,
   Copy,
+  Settings,
 } from 'lucide-react';
 import type { Order, ConnectionStatus, Equipment, OrderStatus } from '../types/nexus';
 import { toast } from 'sonner';
 
-type TechTab = 'feasibility-queue' | 'connection-manager' | 'equipment-tracker';
+type TechTab = 'feasibility-queue' | 'connection-manager' | 'equipment-tracker' | 'settings';
 
 export const TechnicalDashboard: React.FC = () => {
   const {
@@ -50,6 +30,7 @@ export const TechnicalDashboard: React.FC = () => {
     equipments,
     addEquipment,
   } = useNexus();
+  const { t, language } = useLanguage();
 
   // Active technical sidebar tab
   const [activeTab, setActiveTab] = useState<TechTab>('feasibility-queue');
@@ -223,23 +204,25 @@ export const TechnicalDashboard: React.FC = () => {
   const technicalNavItems: NavItem[] = [
     {
       id: 'feasibility-queue',
-      label: 'Kiểm tra khả thi mạng',
+      label: t.techNav.feasibilityQueue,
       icon: Activity,
       badge: orders.filter((o) => o.status === 'Pending').length,
       badgeColor: 'bg-amber-100 text-amber-900',
     },
     {
       id: 'connection-manager',
-      label: 'Quản lý kết nối & mạch',
+      label: t.techNav.connectionManager,
       icon: Radio,
       badge: connections.length,
     },
     {
       id: 'equipment-tracker',
-      label: 'Quản lý thiết bị CPE',
+      label: t.techNav.equipmentTracker,
       icon: HardDrive,
       badge: equipments.length,
     },
+    { id: 'settings', label: 'Settings', icon: Settings },
+    { id: 'settings', label: t.techNav.settings, icon: Settings },
   ];
 
   return (
@@ -247,12 +230,12 @@ export const TechnicalDashboard: React.FC = () => {
       activeTab={activeTab}
       onTabChange={(tab) => setActiveTab(tab as TechTab)}
       navItems={technicalNavItems}
-      roleBadgeTitle="Field Operations (Technical Staff)"
+      roleBadgeTitle={t.roles.technical}
       pageTitle={technicalNavItems.find((t) => t.id === activeTab)?.label}
       primaryAction={
         activeTab === 'equipment-tracker'
           ? {
-              label: 'Register Hardware',
+              label: language === 'vi' ? 'Đăng ký thiết bị' : 'Register Hardware',
               onClick: () => {
                 setNewEquipmentForm({
                   serialNumber: `NX-HW-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -964,6 +947,16 @@ export const TechnicalDashboard: React.FC = () => {
           </div>
         </div>
       )}
-    </DashboardLayout>
+    
+            {activeTab === 'settings' && (
+              <div className="rounded-xl bg-white dark:bg-[#1E3349] p-8 text-center shadow-sm border border-[#CCE4F7] dark:border-[#253D56]">
+                <Settings className="h-12 w-12 mx-auto text-[#7899B8] dark:text-[#5E7F9F] mb-4" />
+                <h3 className="text-lg font-bold text-[#0F1D2B] dark:text-white mb-2">System Settings</h3>
+                <p className="text-[#537292] dark:text-[#8DB0D4]">Configuration preferences and system settings are under active maintenance...</p>
+                <h3 className="text-lg font-bold text-[#0F1D2B] dark:text-white mb-2">{t.dashboard.settingsTitle}</h3>
+                <p className="text-[#537292] dark:text-[#8DB0D4]">{t.dashboard.settingsDesc}</p>
+              </div>
+            )}
+          </DashboardLayout>
   );
 };

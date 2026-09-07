@@ -80,10 +80,18 @@ export const PREDEFINED_ACCOUNTS: PredefinedAccount[] = [
   },
 ];
 
+export interface RegisterData {
+  name: string;
+  email: string;
+  password: string;
+  phone?: string;
+}
+
 interface AuthContextType {
   currentUser: AuthUser | null;
   isAuthenticated: boolean;
   login: (email: string, password: string) => { success: boolean; error?: string; user?: AuthUser };
+  register: (data: RegisterData) => { success: boolean; error?: string; user?: AuthUser };
   quickLoginAsRole: (role: RoleType) => AuthUser;
   logout: () => void;
 }
@@ -103,6 +111,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   });
 
+  const [registeredAccounts, setRegisteredAccounts] = useState<PredefinedAccount[]>(() => {
+    const saved = localStorage.getItem('nexus_registered_users');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return [];
+      }
+    }
+    return [];
+  });
+
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('nexus_auth_user', JSON.stringify(currentUser));
@@ -112,7 +132,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [currentUser]);
 
   const login = (email: string, password: string) => {
-    const account = PREDEFINED_ACCOUNTS.find(
+    const allAccounts = [...PREDEFINED_ACCOUNTS, ...registeredAccounts];
+    const account = allAccounts.find(
       (acc) =>
         acc.email.toLowerCase() === email.trim().toLowerCase() && acc.password === password
     );
@@ -123,6 +144,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return { success: false, error: 'Tài khoản hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.' };
+  };
+
+  const register = (data: RegisterData) => {
+    const emailNorm = data.email.trim().toLowerCase();
+    const allAccounts = [...PREDEFINED_ACCOUNTS, ...registeredAccounts];
+    const existing = allAccounts.find((a) => a.email.toLowerCase() === emailNorm);
+    if (existing) {
+      return { success: false, error: 'Email này đã được đăng ký trên hệ thống. Vui lòng đăng nhập hoặc dùng email khác.' };
+    }
+
+    const newUser: AuthUser = {
+      id: `usr-${Date.now()}`,
+      name: data.name.trim(),
+      email: emailNorm,
+      role: 'user',
+      title: 'Customer',
+      department: 'Subscribers',
+    };
+
+    const newAccount: PredefinedAccount = {
+      email: emailNorm,
+      password: data.password,
+      user: newUser,
+    };
+
+    const updated = [...registeredAccounts, newAccount];
+    setRegisteredAccounts(updated);
+    localStorage.setItem('nexus_registered_users', JSON.stringify(updated));
+    setCurrentUser(newUser);
+
+    return { success: true, user: newUser };
   };
 
   const quickLoginAsRole = (role: RoleType): AuthUser => {
@@ -142,6 +194,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser,
         isAuthenticated: !!currentUser,
         login,
+        register,
         quickLoginAsRole,
         logout,
       }}

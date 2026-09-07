@@ -9,13 +9,14 @@ import {
 import { useTheme } from "../../context/ThemeContext"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 
-const Toaster = ({ ...props }: ToasterProps) => {
+const Toaster = ({ duration = 1000, ...props }: ToasterProps) => {
   const { theme } = useTheme()
 
   return (
     <Sonner
       theme={theme as ToasterProps["theme"]}
       className="toaster group"
+      duration={duration}
       icons={{
         success: <CircleCheckIcon className="size-4" />,
         info: <InfoIcon className="size-4" />,
