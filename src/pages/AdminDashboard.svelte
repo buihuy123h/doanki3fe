@@ -6,17 +6,18 @@
   import type { NavItem } from '../components/layout/DashboardLayout.svelte';
   import {
     Users, Store, Truck, Layers, Package, Plus, Search, Edit2, Trash2,
-    TrendingUp, CheckCircle2, Phone, MapPin, Wifi, Radio, X, Settings,
+    TrendingUp, CheckCircle2, Phone, MapPin, Wifi, Radio, X, Settings, MessageSquare,
   } from 'lucide-svelte';
   import type { Employee, Vendor, Plan } from '../types/nexus';
   import { toast } from 'svelte-sonner';
 
-  type AdminTab = 'overview' | 'employees' | 'stock' | 'vendors' | 'shops' | 'plans' | 'settings';
+  type AdminTab = 'overview' | 'employees' | 'stock' | 'vendors' | 'shops' | 'plans' | 'feedback' | 'settings';
 
   const {
     employees, addEmployee, updateEmployee, deleteEmployee,
     vendors, addVendor, updateVendor, deleteVendor,
     retailShops, plans, addPlan, updatePlan, deletePlan, inventory,
+    feedbacks, respondFeedback,
   } = nexusStore;
   const { t, language } = languageStore;
 
@@ -64,13 +65,27 @@
     name: '',
     type: 'Broadband' as Plan['type'],
     speedOrBandwidth: '',
-    monthlyRental: 49.99,
+    monthlyRental: 225,
     hourlyCharge: 0,
-    securityDeposit: 50,
+    securityDeposit: 500,
     dataLimit: 'Unlimited',
     status: 'Active' as Plan['status'],
     description: '',
+    billingCycle: 'Monthly' as NonNullable<Plan['billingCycle']>,
+    validity: '1 Month',
+    callRates: '',
   });
+
+  // Respond-to-feedback state
+  let respondingId = $state<string | null>(null);
+  let responseText = $state('');
+  const submitResponse = (id: string) => {
+    if (!responseText.trim()) return;
+    respondFeedback(id, responseText.trim(), 'Sarah Jenkins (Admin)');
+    responseText = '';
+    respondingId = null;
+    toast.success('Response sent to the customer.');
+  };
 
   // Employee Form Submission Handlers
   const handleOpenEmployeeModal = (emp?: Employee) => {
@@ -198,19 +213,25 @@
         dataLimit: plan.dataLimit || 'Unlimited',
         status: plan.status,
         description: plan.description,
+        billingCycle: plan.billingCycle || 'Monthly',
+        validity: plan.validity || '1 Month',
+        callRates: plan.callRates || '',
       };
     } else {
       editingPlan = null;
       planFormData = {
         name: '',
         type: 'Broadband',
-        speedOrBandwidth: '150 Mbps Fiber',
-        monthlyRental: 59.99,
+        speedOrBandwidth: '64 Kbps',
+        monthlyRental: 225,
         hourlyCharge: 0,
-        securityDeposit: 60.0,
+        securityDeposit: 500,
         dataLimit: 'Unlimited',
         status: 'Active',
-        description: 'High-speed broadband package designed for reliable connectivity.',
+        description: 'Unlimited broadband package designed for reliable connectivity.',
+        billingCycle: 'Monthly',
+        validity: '1 Month',
+        callRates: '',
       };
     }
     isPlanModalOpen = true;
@@ -265,6 +286,13 @@
     { id: 'vendors', label: $t.adminNav.vendors, icon: Truck, badge: $vendors.length },
     { id: 'shops', label: $t.adminNav.shops, icon: Store, badge: $retailShops.length },
     { id: 'plans', label: $t.adminNav.plans, icon: Layers, badge: $plans.length },
+    {
+      id: 'feedback',
+      label: $language === 'vi' ? 'Phản hồi KH' : 'Customer Feedback',
+      icon: MessageSquare,
+      badge: $feedbacks.filter((f) => !f.response).length || undefined,
+      badgeColor: 'bg-amber-100 text-amber-800',
+    },
     { id: 'settings', label: $t.adminNav.settings, icon: Settings },
   ]);
 </script>
@@ -744,7 +772,10 @@
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
                   <td class="px-4 py-3 max-w-xs">
                     <div class="font-semibold text-slate-900 dark:text-white">{plan.name}</div>
-                    <div class="text-xs text-slate-500 truncate">{plan.description}</div>
+                    <div class="text-[11px] text-slate-500">
+                      {plan.billingCycle ?? '—'}{plan.validity ? ` · ${plan.validity}` : ''}
+                    </div>
+                    <div class="text-xs text-slate-500 truncate">{plan.callRates || plan.description}</div>
                   </td>
                   <td class="px-4 py-3">
                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold {plan.type === 'Broadband'
@@ -796,6 +827,67 @@
           </table>
         </div>
       </div>
+    </div>
+  {/if}
+
+  <!-- TAB: CUSTOMER FEEDBACK -->
+  {#if activeTab === 'feedback'}
+    <div class="space-y-3">
+      {#if $feedbacks.length === 0}
+        <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-8 text-center text-sm text-slate-400">
+          {$language === 'vi' ? 'Chưa có phản hồi nào từ khách hàng.' : 'No customer feedback collected yet.'}
+        </div>
+      {/if}
+      {#each $feedbacks as f (f.id)}
+        <div class="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 shadow-sm space-y-2">
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <div class="font-semibold text-sm text-slate-900 dark:text-white">
+                {f.customerName}
+                <span class="text-amber-500 ml-1">{'★'.repeat(f.rating)}{'☆'.repeat(5 - f.rating)}</span>
+              </div>
+              <div class="text-[11px] text-slate-500 font-mono">
+                {f.category} · {f.accountId || f.orderId || '—'} · {f.createdAt}
+              </div>
+            </div>
+            {#if !f.response}
+              <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 uppercase">
+                {$language === 'vi' ? 'Chờ phản hồi' : 'Awaiting reply'}
+              </span>
+            {/if}
+          </div>
+          <p class="text-sm text-slate-700 dark:text-slate-300">{f.message}</p>
+
+          {#if f.response}
+            <p class="text-xs pl-3 border-l-2 border-indigo-400 text-indigo-700 dark:text-indigo-300">
+              <strong>{$language === 'vi' ? 'Đã phản hồi' : 'Responded'}:</strong> {f.response}
+              <span class="text-slate-400"> — {f.respondedBy} · {f.respondedAt}</span>
+            </p>
+          {:else if respondingId === f.id}
+            <div class="flex gap-2">
+              <input
+                type="text"
+                bind:value={responseText}
+                placeholder={$language === 'vi' ? 'Nhập phản hồi cho khách hàng…' : 'Type a reply to the customer…'}
+                class="flex-1 px-3 py-2 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <button onclick={() => submitResponse(f.id)} class="px-3 py-2 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white">
+                {$language === 'vi' ? 'Gửi' : 'Send'}
+              </button>
+              <button onclick={() => { respondingId = null; responseText = ''; }} class="px-3 py-2 rounded-lg text-xs border border-slate-200 dark:border-slate-800 text-slate-500">
+                {$language === 'vi' ? 'Hủy' : 'Cancel'}
+              </button>
+            </div>
+          {:else}
+            <button
+              onclick={() => { respondingId = f.id; responseText = ''; }}
+              class="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline"
+            >
+              {$language === 'vi' ? 'Phản hồi khách hàng' : 'Respond to customer'}
+            </button>
+          {/if}
+        </div>
+      {/each}
     </div>
   {/if}
 
@@ -1125,6 +1217,37 @@
               />
             </div>
           </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Billing Cycle</label>
+              <select bind:value={planFormData.billingCycle} class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm">
+                <option value="Hourly Pack">Hourly Pack</option>
+                <option value="Monthly">Monthly</option>
+                <option value="Quarterly">Quarterly</option>
+                <option value="Half-Yearly">Half-Yearly</option>
+                <option value="Yearly">Yearly</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Validity</label>
+              <input type="text" placeholder="e.g. 6 Months" bind:value={planFormData.validity}
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Data / Hours Limit</label>
+              <input type="text" bind:value={planFormData.dataLimit}
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+          </div>
+
+          {#if planFormData.type === 'Landline'}
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Call Charges (Landline)</label>
+              <input type="text" placeholder="Local: 70¢/min · STD: $2.25/min · SMS to mobile: $1.00/min" bind:value={planFormData.callRates}
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+          {/if}
 
           <div>
             <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Plan Description & Features</label>

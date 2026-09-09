@@ -11,12 +11,13 @@
     CreditCard, User, Copy, Receipt, ArrowRight, Sparkles, Plus, Settings,
   } from 'lucide-svelte';
   import type { ConnectionType, Order } from '../types/nexus';
+  import { getBulkDiscountPercent } from '../context/NexusContext';
   import { toast } from 'svelte-sonner';
 
   type RetailTab = 'new-order' | 'order-tracking' | 'connection-details' | 'payment-records' | 'settings';
 
   const { plans, placeOrder, orders, connections, bills } = nexusStore;
-  const { t } = languageStore;
+  const { t, language } = languageStore;
 
   // Active navigation tab
   let activeTab = $state<RetailTab>('new-order');
@@ -29,29 +30,80 @@
   let idProofType = $state<Order['idProofType']>('National ID Card');
   let idProofNumber = $state('');
   let connectionType = $state<ConnectionType>('Broadband');
-  let selectedPlanId = $state('plan-bb-01');
+  let selectedPlanId = $state('');
+  // Bulk / corporate scheme + Dial-Up existing landline
+  let bulkConnectionsCount = $state(1);
+  let hasExistingLandline = $state(false);
+  let existingLandlineAccountId = $state('');
+  const bulkDiscountPercent = $derived(getBulkDiscountPercent(bulkConnectionsCount));
 
   // Success Modal for newly generated Order
   let placedOrder = $state<Order | null>(null);
 
-  // STATE: ORDER TRACKING (11-digit Alphanumeric Order ID)
+  // STATE: ORDER TRACKING (11-char Order ID) — advanced search fields
   let trackingSearchQuery = $state('D0000000001');
+  let advOrderName = $state('');
+  let advOrderType = $state<'All' | ConnectionType>('All');
+  let advOrderPhone = $state('');
+  let advOrderFrom = $state('');
+  let advOrderTo = $state('');
   let trackedOrder = $state<Order | null>(
     $orders.find((o) => o.id === 'D0000000001') || $orders[0] || null
   );
 
-  // STATE: CONNECTION DETAILS (16-digit Account ID)
-  let accountSearchQuery = $state('8820-4102-9931-1001');
+  // STATE: CONNECTION DETAILS (16-char Account ID) — advanced search fields
+  let accountSearchQuery = $state('T064-000000000001');
+  let advConnName = $state('');
+  let advConnType = $state<'All' | ConnectionType>('All');
+  let advConnPhone = $state('');
+  let advConnFrom = $state('');
+  let advConnTo = $state('');
   let trackedConnection = $state(
-    $connections.find((c) => c.accountId === '8820-4102-9931-1001') || $connections[0] || null
+    $connections.find((c) => c.accountId === 'T064-000000000001') || $connections[0] || null
   );
 
   // STATE: PAYMENT RECORDS SEARCH
   let paymentAccountQuery = $state('');
 
+  // Advanced search results
+  const advOrderResults = $derived(
+    $orders.filter((o) => {
+      const q = trackingSearchQuery.trim().toUpperCase();
+      if (q && !o.id.toUpperCase().includes(q)) return false;
+      if (advOrderName.trim() && !o.customerName.toLowerCase().includes(advOrderName.trim().toLowerCase())) return false;
+      if (advOrderType !== 'All' && o.connectionType !== advOrderType) return false;
+      if (advOrderPhone.trim() && !o.customerPhone.replace(/\D/g, '').includes(advOrderPhone.replace(/\D/g, ''))) return false;
+      const day = o.createdAt.slice(0, 10);
+      if (advOrderFrom && day < advOrderFrom) return false;
+      if (advOrderTo && day > advOrderTo) return false;
+      return true;
+    })
+  );
+
+  const advConnResults = $derived(
+    $connections.filter((c) => {
+      const q = accountSearchQuery.trim().replace(/-/g, '').toUpperCase();
+      if (q && !c.accountId.replace(/-/g, '').toUpperCase().includes(q)) return false;
+      if (advConnName.trim() && !c.customerName.toLowerCase().includes(advConnName.trim().toLowerCase())) return false;
+      if (advConnType !== 'All' && c.connectionType !== advConnType) return false;
+      if (advConnPhone.trim() && !c.customerPhone.replace(/\D/g, '').includes(advConnPhone.replace(/\D/g, ''))) return false;
+      const day = (c.installedDate || '').slice(0, 10);
+      if (advConnFrom && day < advConnFrom) return false;
+      if (advConnTo && day > advConnTo) return false;
+      return true;
+    })
+  );
+
   // Filter available plans according to selected Connection Type
   const availablePlans = $derived($plans.filter((p) => p.type === connectionType && p.status === 'Active'));
   const currentPlan = $derived($plans.find((p) => p.id === selectedPlanId) || availablePlans[0]);
+
+  // Default the plan to the first one available for the chosen connection type.
+  $effect(() => {
+    if (!availablePlans.some((p) => p.id === selectedPlanId)) {
+      selectedPlanId = availablePlans[0]?.id ?? '';
+    }
+  });
 
   // FORM SUBMISSION LOGIC: PLACE ORDER
   const handlePlaceOrderSubmit = (e: SubmitEvent) => {
@@ -84,6 +136,10 @@
       planName: currentPlan.name,
       retailOutletCode: 'SH-01',
       retailEmployeeName: 'David Chen',
+      bulkConnectionsCount: Math.max(1, bulkConnectionsCount || 1),
+      ...(connectionType === 'Dial-Up' && hasExistingLandline && existingLandlineAccountId.trim()
+        ? { existingLandlineAccountId: existingLandlineAccountId.trim() }
+        : {}),
     });
 
     placedOrder = newOrder;
@@ -95,6 +151,9 @@
     customerEmail = '';
     installationAddress = '';
     idProofNumber = '';
+    bulkConnectionsCount = 1;
+    hasExistingLandline = false;
+    existingLandlineAccountId = '';
   };
 
   // ORDER TRACKING SEARCH HANDLER
@@ -159,7 +218,7 @@
     idProofType = 'National ID Card';
     idProofNumber = 'ID-NY-9920194';
     connectionType = 'Broadband';
-    selectedPlanId = 'plan-bb-01';
+    selectedPlanId = $plans.find((p) => p.type === 'Broadband' && p.status === 'Active')?.id ?? '';
     toast.info('Form pre-filled with demo walk-in customer data');
   };
 
@@ -181,7 +240,7 @@
     { step: 1, label: 'Order Logged', sub: 'Retail Counter' },
     { step: 2, label: 'Feasibility Checked', sub: 'Field Telemetry' },
     { step: 3, label: 'Tech Dispatch', sub: 'CPE & Port Bind' },
-    { step: 4, label: 'Connection Live', sub: '16-Digit Account' },
+    { step: 4, label: 'Connection Live', sub: '16-char Account' },
   ];
 
   const retailNavItems: NavItem[] = $derived([
@@ -362,10 +421,57 @@
           </div>
         </div>
 
+        <!-- SECTION D: Bulk scheme & Dial-Up existing landline -->
+        <div>
+          <div class="flex items-center space-x-2 border-b border-slate-100 dark:border-slate-800 pb-2 mb-4">
+            <FileText class="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <h3 class="font-semibold text-sm uppercase tracking-wider text-slate-900 dark:text-white">
+              Step 4: Bulk Scheme{connectionType === 'Dial-Up' ? ' & Landline' : ''}
+            </h3>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Số lượng kết nối (gói doanh nghiệp)' : 'Number of connections (bulk)'}
+              </label>
+              <input
+                type="number"
+                min="1"
+                bind:value={bulkConnectionsCount}
+                class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <p class="text-[11px] text-slate-500 mt-1">
+                {bulkDiscountPercent > 0
+                  ? `${$language === 'vi' ? 'Chiết khấu' : 'Scheme discount'}: −${bulkDiscountPercent}% ${$language === 'vi' ? '(cước ứng trước + tiền cọc)' : '(advance + deposit)'}`
+                  : $language === 'vi' ? 'Từ 10 kết nối trở lên được hưởng chiết khấu.' : 'Discount applies from 10 connections upward.'}
+              </p>
+            </div>
+            {#if connectionType === 'Dial-Up'}
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  {$language === 'vi' ? 'Đã có landline Nexus?' : 'Existing Nexus landline?'}
+                </label>
+                <label class="flex items-center space-x-2 text-xs text-slate-600 dark:text-slate-300 py-1.5">
+                  <input type="checkbox" bind:checked={hasExistingLandline} class="h-4 w-4 rounded" />
+                  <span>{$language === 'vi' ? 'Chỉ kiểm tra khả thi phần internet' : 'Only the internet leg needs a feasibility check'}</span>
+                </label>
+                {#if hasExistingLandline}
+                  <input
+                    type="text"
+                    placeholder={$language === 'vi' ? 'Mã tài khoản landline (nếu có)' : 'Landline Account ID (optional)'}
+                    bind:value={existingLandlineAccountId}
+                    class="w-full px-3 py-2 text-xs font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                {/if}
+              </div>
+            {/if}
+          </div>
+        </div>
+
         <!-- Submit Action -->
         <div class="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
           <div class="text-xs text-slate-500">
-            Submitting generates an official <strong class="text-slate-700 dark:text-slate-300">11-digit Order ID</strong> and routes to Tech Feasibility.
+            Submitting generates an official <strong class="text-slate-700 dark:text-slate-300">11-character Order ID</strong> (D/B/T + serial) and routes to Tech Feasibility.
           </div>
           <button
             type="submit"
@@ -386,6 +492,9 @@
           </h3>
 
           {#if currentPlan}
+            {@const base = currentPlan.monthlyRental + currentPlan.securityDeposit}
+            {@const disc = (base * bulkDiscountPercent) / 100}
+            {@const taxed = (base - disc) * 1.1224}
             <div class="space-y-3 text-xs">
               <div class="p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
                 <div class="flex justify-between">
@@ -407,14 +516,20 @@
                   <span>Refundable Security Deposit:</span>
                   <span class="font-mono tabular-nums">${currentPlan.securityDeposit.toFixed(2)}</span>
                 </div>
+                {#if bulkDiscountPercent > 0}
+                  <div class="flex justify-between text-emerald-600 dark:text-emerald-400">
+                    <span>Bulk scheme ({bulkConnectionsCount} conns) −{bulkDiscountPercent}%:</span>
+                    <span class="font-mono tabular-nums">−${disc.toFixed(2)}</span>
+                  </div>
+                {/if}
                 <div class="flex justify-between text-slate-600 dark:text-slate-400">
                   <span>Est. Service Tax (12.24%):</span>
-                  <span class="font-mono tabular-nums">${(((currentPlan.monthlyRental + currentPlan.securityDeposit) * 12.24) / 100).toFixed(2)}</span>
+                  <span class="font-mono tabular-nums">${(((base - disc) * 12.24) / 100).toFixed(2)}</span>
                 </div>
                 <div class="border-t border-slate-200 dark:border-slate-800 pt-2 flex justify-between font-bold text-sm text-slate-900 dark:text-white">
                   <span>Initial Due at Counter:</span>
                   <span class="font-mono text-emerald-600 dark:text-emerald-400 tabular-nums">
-                    ${((currentPlan.monthlyRental + currentPlan.securityDeposit) * 1.1224).toFixed(2)}
+                    ${taxed.toFixed(2)}
                   </span>
                 </div>
               </div>
@@ -448,10 +563,10 @@
   <!-- TAB 2: ORDER TRACKING -->
   {#if activeTab === 'order-tracking'}
     <div class="space-y-6">
-      <!-- Search Bar for 11-digit Alphanumeric ID -->
+      <!-- Advanced search: ID / name / type / date period / contact number -->
       <div class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
         <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Search Order by 11-Digit Alphanumeric ID (e.g., D0000000001, B0000000002)
+          Advanced order search — 11-char Order ID (D/B/T + serial), name, type, date period, phone
         </label>
 
         <div class="flex gap-2">
@@ -460,7 +575,7 @@
             <input
               type="text"
               maxlength="11"
-              placeholder="Enter 11-digit Order ID..."
+              placeholder="Order ID e.g. D0000000001"
               bind:value={trackingSearchQuery}
               oninput={(e) => (trackingSearchQuery = (e.currentTarget as HTMLInputElement).value.toUpperCase())}
               onkeydown={(e) => e.key === 'Enter' && handleSearchOrder()}
@@ -475,19 +590,35 @@
           </button>
         </div>
 
-        <!-- Fast Pick Samples -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+          <input type="text" placeholder="Name on order" bind:value={advOrderName}
+            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <select bind:value={advOrderType}
+            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <option value="All">Any type</option>
+            <option value="Broadband">Broadband</option>
+            <option value="Dial-Up">Dial-Up</option>
+            <option value="Landline">Landline (Telephone)</option>
+          </select>
+          <input type="text" placeholder="Contact number" bind:value={advOrderPhone}
+            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <input type="date" bind:value={advOrderFrom} title="Applied from"
+            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <input type="date" bind:value={advOrderTo} title="Applied to"
+            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        </div>
+
         <div class="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500">
-          <span>Recent orders:</span>
-          {#each $orders.slice(0, 4) as o (o.id)}
+          <span>Results ({advOrderResults.length}):</span>
+          {#each advOrderResults.slice(0, 12) as o (o.id)}
             <button
-              onclick={() => {
-                trackingSearchQuery = o.id;
-                handleSearchOrder(o.id);
-              }}
+              onclick={() => (trackedOrder = o)}
               class="font-mono text-emerald-600 dark:text-emerald-400 hover:underline bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/40"
             >
-              {o.id} ({o.status})
+              {o.id} · {o.customerName.split(' ')[0]} ({o.status})
             </button>
+          {:else}
+            <span class="italic">No matching orders.</span>
           {/each}
         </div>
       </div>
@@ -520,7 +651,7 @@
               class="inline-flex items-center space-x-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg"
             >
               <Copy class="h-3.5 w-3.5" />
-              <span>Copy Order ID</span>
+              <span>Copy ID</span>
             </button>
           </div>
 
@@ -580,7 +711,7 @@
                 {/if}
                 {#if trackedOrder.assignedAccountId}
                   <div class="pt-2">
-                    <span class="text-xs text-emerald-600 font-semibold block">Issued 16-Digit Account ID:</span>
+                    <span class="text-xs text-emerald-600 font-semibold block">Issued 16-character Account ID:</span>
                     <span class="font-mono text-base font-bold text-slate-900 dark:text-white">{trackedOrder.assignedAccountId}</span>
                   </div>
                 {/if}
@@ -590,7 +721,7 @@
         </div>
       {:else}
         <div class="text-center py-12 text-slate-400">
-          Enter an 11-digit Order ID above to inspect tracking status.
+          Enter an 11-character Order ID above to inspect tracking status.
         </div>
       {/if}
     </div>
@@ -599,10 +730,10 @@
   <!-- TAB 3: CONNECTION DETAILS -->
   {#if activeTab === 'connection-details'}
     <div class="space-y-6">
-      <!-- Search 16-digit Account ID -->
+      <!-- Advanced search: Account ID / name / type / date period / contact number -->
       <div class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3">
         <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-          Search Subscriber by 16-Digit Account ID (e.g., 8820-4102-9931-1001)
+          Advanced connection search — 16-char Account ID (T064-000000000001), name, type, install date, phone
         </label>
 
         <div class="flex gap-2">
@@ -610,7 +741,7 @@
             <Search class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="XXXX-XXXX-XXXX-XXXX"
+              placeholder="Account ID e.g. T064-000000000001"
               bind:value={accountSearchQuery}
               onkeydown={(e) => e.key === 'Enter' && handleSearchConnection()}
               class="w-full pl-9 pr-4 py-2.5 text-base font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 tracking-widest"
@@ -624,19 +755,35 @@
           </button>
         </div>
 
-        <!-- Fast Pick Samples -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+          <input type="text" placeholder="Subscriber name" bind:value={advConnName}
+            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <select bind:value={advConnType}
+            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500">
+            <option value="All">Any type</option>
+            <option value="Broadband">Broadband</option>
+            <option value="Dial-Up">Dial-Up</option>
+            <option value="Landline">Landline (Telephone)</option>
+          </select>
+          <input type="text" placeholder="Contact number" bind:value={advConnPhone}
+            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <input type="date" bind:value={advConnFrom} title="Installed from"
+            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+          <input type="date" bind:value={advConnTo} title="Installed to"
+            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+        </div>
+
         <div class="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500">
-          <span>Active lines:</span>
-          {#each $connections as c (c.accountId)}
+          <span>Results ({advConnResults.length}):</span>
+          {#each advConnResults.slice(0, 12) as c (c.accountId)}
             <button
-              onclick={() => {
-                accountSearchQuery = c.accountId;
-                handleSearchConnection(c.accountId);
-              }}
+              onclick={() => (trackedConnection = c)}
               class="font-mono text-emerald-600 dark:text-emerald-400 hover:underline bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/40"
             >
-              {c.accountId} ({c.customerName.split(' ')[0]})
+              {c.accountId} · {c.customerName.split(' ')[0]} ({c.status})
             </button>
+          {:else}
+            <span class="italic">No matching connections.</span>
           {/each}
         </div>
       </div>
@@ -702,7 +849,7 @@
         </div>
       {:else}
         <div class="text-center py-12 text-slate-400">
-          Enter a 16-digit Account ID above to retrieve connection details.
+          Enter a 16-character Account ID above to retrieve connection details.
         </div>
       {/if}
     </div>
@@ -732,7 +879,7 @@
             <thead class="bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
               <tr>
                 <th class="px-4 py-3">Invoice Number</th>
-                <th class="px-4 py-3">16-Digit Account ID</th>
+                <th class="px-4 py-3">16-character Account ID</th>
                 <th class="px-4 py-3">Subscriber Name</th>
                 <th class="px-4 py-3">Billing Cycle</th>
                 <th class="px-4 py-3">Total Amount ($)</th>
@@ -769,7 +916,7 @@
     </div>
   {/if}
 
-  <!-- ORDER CREATED SUCCESS MODAL (With 11-digit Order ID) -->
+  <!-- ORDER CREATED SUCCESS MODAL (With 11-character Order ID) -->
   {#if placedOrder}
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
       <div class="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4 text-center">
@@ -782,11 +929,20 @@
           <p class="text-xs text-slate-500 mt-1">Order routed directly to the Technical Staff Feasibility Queue.</p>
         </div>
 
-        <!-- Highlighted 11-digit Order ID -->
+        <!-- Highlighted 11-character Order ID -->
         <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1">
           <div class="text-xs text-slate-400 font-semibold uppercase">Official 11-Digit Order ID</div>
           <div class="text-2xl font-mono font-extrabold text-emerald-600 dark:text-emerald-400 tracking-wider">{placedOrder.id}</div>
           <div class="text-[11px] text-slate-500">Customer: {placedOrder.customerName} • {placedOrder.planName}</div>
+        </div>
+
+        <!-- The 16-character Account ID is issued later, on feasibility confirmation -->
+        <div class="p-4 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800/60 space-y-1">
+          <div class="text-xs text-sky-600 dark:text-sky-400 font-semibold uppercase">Account ID pending</div>
+          <div class="text-[11px] text-slate-500">
+            The customer's 16-character Account ID — their only sign-in credential — is issued once technical
+            confirms the line is feasible. Until then they track this order code.
+          </div>
         </div>
 
         <div class="flex gap-2 justify-center">
@@ -795,7 +951,7 @@
             class="px-4 py-2 rounded-lg text-xs font-medium border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center space-x-1.5"
           >
             <Copy class="h-3.5 w-3.5" />
-            <span>Copy ID</span>
+            <span>Copy Order ID</span>
           </button>
           <button
             onclick={trackThisOrder}

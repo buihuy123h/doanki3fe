@@ -1,5 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import type { RoleType } from '../types/nexus';
+import { nexusStore, accountIdKey } from './NexusContext';
+import { languageStore } from './LanguageContext';
 
 export interface AuthUser {
   id: string;
@@ -8,18 +10,20 @@ export interface AuthUser {
   role: RoleType;
   title: string;
   department: string;
+  // Customer-only fields (populated when signing in with an Account ID)
+  accountId?: string;
+  orderId?: string;
+  branchCode?: string;
+  planName?: string;
 }
 
-export interface PredefinedAccount {
-  email: string;
-  password: string;
+// Staff accounts are internal: they are picked by role, no email/password prompt.
+export interface StaffAccount {
   user: AuthUser;
 }
 
-export const PREDEFINED_ACCOUNTS: PredefinedAccount[] = [
+export const STAFF_ACCOUNTS: StaffAccount[] = [
   {
-    email: 'admin@nexus.telecom',
-    password: 'admin123',
     user: {
       id: 'usr-admin-01',
       name: 'Sarah Jenkins',
@@ -30,8 +34,6 @@ export const PREDEFINED_ACCOUNTS: PredefinedAccount[] = [
     },
   },
   {
-    email: 'retail@nexus.telecom',
-    password: 'retail123',
     user: {
       id: 'usr-retail-02',
       name: 'David Chen',
@@ -42,8 +44,6 @@ export const PREDEFINED_ACCOUNTS: PredefinedAccount[] = [
     },
   },
   {
-    email: 'tech@nexus.telecom',
-    password: 'tech123',
     user: {
       id: 'usr-tech-03',
       name: 'Marcus Ramirez',
@@ -54,8 +54,6 @@ export const PREDEFINED_ACCOUNTS: PredefinedAccount[] = [
     },
   },
   {
-    email: 'accounts@nexus.telecom',
-    password: 'accounts123',
     user: {
       id: 'usr-accounts-04',
       name: 'Elena Rostova',
@@ -65,25 +63,18 @@ export const PREDEFINED_ACCOUNTS: PredefinedAccount[] = [
       department: 'Finance & Billing Division',
     },
   },
-  {
-    email: 'user@nexus.telecom',
-    password: 'user123',
-    user: {
-      id: 'usr-customer-05',
-      name: 'Nguyễn Văn A',
-      email: 'user@nexus.telecom',
-      role: 'user',
-      title: 'Customer',
-      department: 'Subscribers',
-    },
-  },
 ];
 
-export interface RegisterData {
-  name: string;
-  email: string;
-  password: string;
-  phone?: string;
+// ---- Account ID helpers ----
+// Customers sign in with the 16-char Account ID issued once the line is feasible.
+// Layout per spec: [type letter D/B/T][3-digit city code][12-digit serial].
+export function normalizeAccountId(raw: string): string {
+  const s = (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16);
+  return s.length > 4 ? `${s.slice(0, 4)}-${s.slice(4)}` : s;
+}
+
+export function isCompleteAccountId(raw: string): boolean {
+  return (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '').length === 16;
 }
 
 // ---- Stores ----
@@ -91,23 +82,17 @@ function createAuthStore() {
   const savedUser = (() => {
     try {
       const s = localStorage.getItem('nexus_auth_user');
-      return s ? (JSON.parse(s) as AuthUser) : null;
+      const parsed = s ? (JSON.parse(s) as AuthUser) : null;
+      // Sessions saved by the old email/password flow have no Account ID:
+      // drop them so the customer signs in the new way.
+      if (parsed?.role === 'user' && !parsed.accountId) return null;
+      return parsed;
     } catch {
       return null;
     }
   })();
 
-  const savedRegistered = (() => {
-    try {
-      const s = localStorage.getItem('nexus_registered_users');
-      return s ? (JSON.parse(s) as PredefinedAccount[]) : [];
-    } catch {
-      return [];
-    }
-  })();
-
   const currentUser = writable<AuthUser | null>(savedUser);
-  const registeredAccounts = writable<PredefinedAccount[]>(savedRegistered);
 
   // Persist current user
   currentUser.subscribe((u) => {
@@ -117,54 +102,58 @@ function createAuthStore() {
 
   const isAuthenticated = derived(currentUser, (u) => !!u);
 
-  const login = (email: string, password: string) => {
-    const allAccounts = [...PREDEFINED_ACCOUNTS, ...get(registeredAccounts)];
-    const account = allAccounts.find(
-      (acc) =>
-        acc.email.toLowerCase() === email.trim().toLowerCase() && acc.password === password
+  // Builds the customer session from whatever the Account ID is attached to:
+  // a provisioned connection first, otherwise the order that reserved the ID.
+  const buildCustomerUser = (accountId: string): AuthUser | null => {
+    const key = accountIdKey(accountId);
+    const connection = get(nexusStore.connections).find((c) => accountIdKey(c.accountId) === key);
+    const order = get(nexusStore.orders).find(
+      (o) => o.assignedAccountId && accountIdKey(o.assignedAccountId) === key
     );
+    if (!connection && !order) return null;
 
-    if (account) {
-      currentUser.set(account.user);
-      return { success: true, user: account.user };
-    }
+    const shopCode = order?.retailOutletCode;
+    const shop = get(nexusStore.retailShops).find((s) => s.shopCode === shopCode);
 
-    return { success: false, error: 'Tài khoản hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.' };
-  };
-
-  const register = (data: RegisterData) => {
-    const emailNorm = data.email.trim().toLowerCase();
-    const allAccounts = [...PREDEFINED_ACCOUNTS, ...get(registeredAccounts)];
-    const existing = allAccounts.find((a) => a.email.toLowerCase() === emailNorm);
-    if (existing) {
-      return { success: false, error: 'Email này đã được đăng ký trên hệ thống. Vui lòng đăng nhập hoặc dùng email khác.' };
-    }
-
-    const newUser: AuthUser = {
-      id: `usr-${Date.now()}`,
-      name: data.name.trim(),
-      email: emailNorm,
+    return {
+      id: accountId,
+      name: connection?.customerName || order!.customerName,
+      email: connection?.customerEmail || order!.customerEmail,
       role: 'user',
       title: 'Customer',
-      department: 'Subscribers',
+      department: shop ? `${shop.name} (${shop.shopCode})` : 'Subscribers',
+      accountId,
+      orderId: connection?.orderId || order?.id,
+      branchCode: shopCode,
+      planName: connection?.planName || order?.planName,
     };
-
-    const newAccount: PredefinedAccount = {
-      email: emailNorm,
-      password: data.password,
-      user: newUser,
-    };
-
-    const updated = [...get(registeredAccounts), newAccount];
-    registeredAccounts.set(updated);
-    localStorage.setItem('nexus_registered_users', JSON.stringify(updated));
-    currentUser.set(newUser);
-
-    return { success: true, user: newUser };
   };
 
-  const quickLoginAsRole = (role: RoleType): AuthUser => {
-    const account = PREDEFINED_ACCOUNTS.find((acc) => acc.user.role === role)!;
+  // Customer sign-in: Account ID only, issued at purchase time.
+  const loginWithAccountId = (rawAccountId: string) => {
+    const accountId = normalizeAccountId(rawAccountId);
+
+    const t = get(languageStore.t);
+
+    if (!isCompleteAccountId(rawAccountId)) {
+      return { success: false as const, error: t.auth.accountIdRequired };
+    }
+
+    const user = buildCustomerUser(accountId);
+    if (!user) {
+      return { success: false as const, error: t.auth.accountNotFound };
+    }
+
+    currentUser.set(user);
+    return { success: true as const, user };
+  };
+
+  // Called right after a purchase so the customer lands in their portal.
+  const loginAfterPurchase = (accountId: string) => loginWithAccountId(accountId);
+
+  // Internal staff entry point (demo): pick a role, no credentials.
+  const loginAsStaff = (role: Exclude<RoleType, 'user'>): AuthUser => {
+    const account = STAFF_ACCOUNTS.find((acc) => acc.user.role === role)!;
     currentUser.set(account.user);
     return account.user;
   };
@@ -177,9 +166,9 @@ function createAuthStore() {
   return {
     currentUser,
     isAuthenticated,
-    login,
-    register,
-    quickLoginAsRole,
+    loginWithAccountId,
+    loginAfterPurchase,
+    loginAsStaff,
     logout,
   };
 }

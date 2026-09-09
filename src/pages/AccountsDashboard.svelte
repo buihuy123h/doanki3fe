@@ -12,18 +12,20 @@
 
   type AccountsTab = 'bill-generation' | 'payment-updates' | 'charge-settings' | 'settings';
 
-  const { connections, bills, generateBill, recordPayment, settings, updateSettings } = nexusStore;
-  const { t } = languageStore;
+  const { connections, orders, bills, generateBill, recordPayment, settings, updateSettings } = nexusStore;
+  const { t, language } = languageStore;
 
   // Active navigation tab
   let activeTab = $state<AccountsTab>('bill-generation');
 
   // STATE: BILL GENERATION FORM
-  let billAccountId = $state('8820-4102-9931-1001');
+  let billAccountId = $state('T064-000000000001');
   let billingMonth = $state('September 2026');
-  let customSecurityDeposit = $state(30.0);
-  let customMonthlyRental = $state(19.99);
+  let customSecurityDeposit = $state(250);
+  let customMonthlyRental = $state(125);
   let customHourlyCharges = $state(0.0);
+  let discountPercent = $state(25); // bulk / corporate scheme discount
+  let discountTouched = $state(false);
 
   // Selected Connection matching the Account ID
   const matchedConnection = $derived(
@@ -32,24 +34,46 @@
     )
   );
 
+  // The order behind this connection carries the bulk scheme discount.
+  const matchedOrder = $derived(
+    matchedConnection
+      ? $orders.find((o) => o.id === matchedConnection.orderId) ??
+          $orders.find((o) => o.assignedAccountId === matchedConnection.accountId)
+      : undefined
+  );
+
+  // Keep the discount in sync with the order's scheme unless the accountant overrode it.
+  $effect(() => {
+    if (!discountTouched) discountPercent = matchedOrder?.bulkDiscountPercent ?? 0;
+  });
+
   // When connection changes, auto-load its plan rates
   const handleSelectConnectionForBilling = (accountId: string) => {
     billAccountId = accountId;
+    discountTouched = false;
     const conn = $connections.find((c) => c.accountId === accountId);
     if (conn) {
-      customSecurityDeposit = conn.securityDeposit || 50.0;
-      customMonthlyRental = conn.monthlyRental || 49.99;
+      customSecurityDeposit = conn.securityDeposit || 250;
+      customMonthlyRental = conn.monthlyRental || 100;
       customHourlyCharges = 0.0;
       toast.info(`Loaded subscriber parameters for ${conn.customerName}`);
     }
   };
 
   // FINANCIAL CALCULATION ENGINE:
-  // Subtotal = Security Deposit + Monthly Rental + Hourly Charges
+  // Discount   = (Security Deposit + Monthly Rental) * discountPercent%
+  // Subtotal   = Security Deposit + Monthly Rental + Hourly Charges - Discount
   // Service Tax = Subtotal * (serviceTaxRate / 100) [Default: 12.24%]
   // Grand Total = Subtotal + Service Tax
+  const discountAmount = $derived(
+    Number(
+      (((customSecurityDeposit || 0) + (customMonthlyRental || 0)) * (discountPercent || 0) / 100).toFixed(2)
+    )
+  );
   const subtotal = $derived(
-    Number(((customSecurityDeposit || 0) + (customMonthlyRental || 0) + (customHourlyCharges || 0)).toFixed(2))
+    Number(
+      ((customSecurityDeposit || 0) + (customMonthlyRental || 0) + (customHourlyCharges || 0) - discountAmount).toFixed(2)
+    )
   );
   const serviceTaxAmount = $derived(Number(((subtotal * $settings.serviceTaxRate) / 100).toFixed(2)));
   const grandTotal = $derived(Number((subtotal + serviceTaxAmount).toFixed(2)));
@@ -88,7 +112,7 @@
     e.preventDefault();
 
     if (!billAccountId.trim()) {
-      toast.error('Please input a valid 16-digit Account ID.');
+      toast.error('Please input a valid 16-character Account ID.');
       return;
     }
 
@@ -97,7 +121,8 @@
       customSecurityDeposit,
       customMonthlyRental,
       customHourlyCharges,
-      billingMonth
+      billingMonth,
+      discountPercent || 0
     );
 
     generatedInvoiceModal = createdBill;
@@ -199,7 +224,7 @@
           <!-- Account ID Input Section -->
           <div>
             <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-              16-Digit Subscriber Account ID *
+              16-character Subscriber Account ID *
             </label>
             <div class="flex gap-2">
               <div class="relative flex-1">
@@ -207,7 +232,7 @@
                 <input
                   type="text"
                   required
-                  placeholder="XXXX-XXXX-XXXX-XXXX"
+                  placeholder="T064-000000000001"
                   bind:value={billAccountId}
                   class="w-full pl-9 pr-4 py-2.5 text-base font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 tracking-widest text-slate-900 dark:text-white"
                 />
@@ -335,6 +360,28 @@
                         class="w-32 px-2.5 py-1.5 text-right font-mono tabular-nums bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white"
                       />
                     </td>
+                  </tr>
+
+                  <!-- Line Item 3b: Bulk / corporate scheme discount -->
+                  <tr class="bg-emerald-50/50 dark:bg-emerald-950/30">
+                    <td class="px-4 py-3">
+                      <div class="font-semibold text-emerald-700 dark:text-emerald-300">
+                        Bulk / Corporate Scheme Discount
+                        {#if matchedOrder}
+                          <span class="text-[10px] text-slate-500">({matchedOrder.bulkConnectionsCount} connections)</span>
+                        {/if}
+                      </div>
+                      <div class="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5 flex items-center gap-1.5">
+                        <input
+                          type="number" step="1" min="0" max="100"
+                          value={discountPercent}
+                          oninput={(e) => { discountPercent = parseFloat((e.currentTarget as HTMLInputElement).value) || 0; discountTouched = true; }}
+                          class="w-16 px-2 py-1 text-right font-mono bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded"
+                        />
+                        <span>% of (deposit + rental)</span>
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 text-right font-mono tabular-nums font-bold text-sm text-emerald-700 dark:text-emerald-400">−${discountAmount.toFixed(2)}</td>
                   </tr>
 
                   <!-- Line Item 4: Subtotal -->
@@ -793,6 +840,12 @@
                   <tr>
                     <td class="px-3 py-2">Hourly / Usage Charges</td>
                     <td class="px-3 py-2 text-right font-mono tabular-nums">${generatedInvoiceModal.hourlyCharges.toFixed(2)}</td>
+                  </tr>
+                {/if}
+                {#if generatedInvoiceModal.discountAmount > 0}
+                  <tr class="text-emerald-700 dark:text-emerald-400">
+                    <td class="px-3 py-2">Bulk / Corporate Scheme Discount ({generatedInvoiceModal.discountPercent}%)</td>
+                    <td class="px-3 py-2 text-right font-mono tabular-nums font-bold">−${generatedInvoiceModal.discountAmount.toFixed(2)}</td>
                   </tr>
                 {/if}
                 <tr class="bg-slate-50 dark:bg-slate-950 font-semibold">

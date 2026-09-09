@@ -1,25 +1,34 @@
 <script lang="ts">
-  // Mirrors pages/LoginPage.tsx of the React original.
-  import { authStore } from '../context/AuthContext';
+  // Customer sign-in is Account ID only (issued at purchase); staff enter by role.
+  import { authStore, normalizeAccountId } from '../context/AuthContext';
+  import { nexusStore } from '../context/NexusContext';
   import { themeStore } from '../context/ThemeContext';
   import { languageStore } from '../context/LanguageContext';
   import LanguageToggle from '../components/layout/LanguageToggle.svelte';
-  import { dashboardPathForRole, navigate } from '../lib/router';
-  import type { RoleType } from '../types/nexus';
+  import { dashboardPathForRole, navigate, queryParam } from '../lib/router';
+  import type { Order, RoleType } from '../types/nexus';
   import {
-    Layers, Lock, Mail, ShieldCheck, ShoppingBag, Wrench, Calculator,
-    ArrowRight, ArrowLeft, Eye, EyeOff, Sparkles, Sun, Moon, User,
+    Layers, KeyRound, ShieldCheck, ShoppingBag, Wrench, Calculator,
+    ArrowRight, ArrowLeft, Sparkles, Sun, Moon, ShoppingCart, Search,
   } from 'lucide-svelte';
   import { toast } from 'svelte-sonner';
 
-  const { login, quickLoginAsRole, currentUser } = authStore;
+  const { loginWithAccountId, loginAsStaff, currentUser } = authStore;
+  const { connections, orders } = nexusStore;
   const { theme, toggleTheme } = themeStore;
-  const { t } = languageStore;
+  const { t, language } = languageStore;
 
-  let email = $state('');
-  let password = $state('');
-  let showPassword = $state(false);
+  let accountId = $state('');
   let errorMessage = $state('');
+
+  // Order lookup: until technical confirms feasibility there is no Account ID,
+  // so a fresh customer follows the order by its code.
+  let orderQuery = $state(queryParam('order') ?? '');
+  let trackedOrder = $state<Order | null>(null);
+  let trackError = $state('');
+
+  // A real subscriber ID from the seeded data, offered as a demo shortcut.
+  const demoAccountId = $derived($connections[0]?.accountId ?? '');
 
   // If already logged in, redirect immediately to their dashboard
   $effect(() => {
@@ -28,35 +37,66 @@
     }
   });
 
-  const handleLoginSubmit = (e: SubmitEvent) => {
-    e.preventDefault();
-    errorMessage = '';
-
-    if (!email.trim() || !password.trim()) {
-      errorMessage = 'Vui lòng nhập đầy đủ email và mật khẩu.';
-      return;
+  // Arriving from the purchase receipt (#/login?order=...) looks the order up.
+  $effect(() => {
+    const fromUrl = queryParam('order');
+    if (fromUrl && !trackedOrder && !trackError) {
+      lookUpOrder(fromUrl);
     }
+  });
 
-    const result = login(email, password);
-    if (result.success && result.user) {
-      toast.success(`Đăng nhập thành công! Xin chào ${result.user.name} (${result.user.title})`);
-      // React original restores the "from" path from router state;
-      // the hash router always lands on the role dashboard instead.
-      navigate(dashboardPathForRole(result.user.role));
+  const lookUpOrder = (rawId: string) => {
+    const id = rawId.trim().toUpperCase();
+    trackError = '';
+    const found = $orders.find((o) => o.id.toUpperCase() === id) ?? null;
+    trackedOrder = found;
+    if (!found) trackError = $t.auth.trackNotFound;
+  };
+
+  const handleTrackSubmit = (e: SubmitEvent) => {
+    e.preventDefault();
+    if (!orderQuery.trim()) return;
+    lookUpOrder(orderQuery);
+  };
+
+  // Keep the field formatted as T064-000000000001 while typing.
+  const handleAccountIdInput = (e: Event) => {
+    accountId = normalizeAccountId((e.currentTarget as HTMLInputElement).value);
+  };
+
+  const signIn = (rawId: string) => {
+    errorMessage = '';
+    const result = loginWithAccountId(rawId);
+    if (result.success) {
+      toast.success(`${$t.auth.loginSuccess} ${result.user.name}`);
+      navigate('/user');
     } else {
-      errorMessage = result.error || 'Thông tin đăng nhập không hợp lệ.';
-      toast.error('Đăng nhập thất bại.');
+      errorMessage = result.error;
+      toast.error($t.auth.loginFailed);
     }
   };
 
-  const handleQuickLogin = (role: RoleType) => {
-    const user = quickLoginAsRole(role);
-    toast.success(`Đã đăng nhập nhanh với vai trò: ${user.title} (${user.name})`);
+  const handleLoginSubmit = (e: SubmitEvent) => {
+    e.preventDefault();
+    if (!accountId.trim()) {
+      errorMessage = $t.auth.accountIdRequired;
+      return;
+    }
+    signIn(accountId);
+  };
+
+  const handleStaffLogin = (role: Exclude<RoleType, 'user'>) => {
+    const user = loginAsStaff(role);
+    toast.success(
+      $language === 'vi'
+        ? `Đã truy cập với vai trò: ${user.title} (${user.name})`
+        : `Signed in as: ${user.title} (${user.name})`
+    );
     navigate(dashboardPathForRole(user.role));
   };
 
-  interface QuickRole {
-    role: RoleType;
+  interface StaffRole {
+    role: Exclude<RoleType, 'user'>;
     label: string;
     name: string;
     Icon: typeof ShieldCheck;
@@ -64,10 +104,9 @@
     iconColor: string;
     hoverText: string;
     sub: string;
-    extraClass?: string;
   }
 
-  const quickRoles: QuickRole[] = [
+  const staffRoles: StaffRole[] = [
     {
       role: 'admin', label: '1. Admin', name: 'Sarah Jenkins', Icon: ShieldCheck,
       chip: 'bg-indigo-50/80 hover:bg-indigo-100/90 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/60 border border-indigo-200 dark:border-indigo-800/50 text-indigo-700 dark:text-indigo-300',
@@ -95,14 +134,6 @@
       iconColor: 'text-blue-600 dark:text-blue-400',
       hoverText: 'group-hover:text-blue-600 dark:group-hover:text-blue-200',
       sub: 'text-[#537292] dark:text-blue-300/70',
-    },
-    {
-      role: 'user', label: '5. Customer', name: 'Nguyễn Văn A', Icon: User,
-      chip: 'bg-purple-50/80 hover:bg-purple-100/90 dark:bg-purple-950/40 dark:hover:bg-purple-900/60 border border-purple-200 dark:border-purple-800/50 text-purple-700 dark:text-purple-300',
-      iconColor: 'text-purple-600 dark:text-purple-400',
-      hoverText: 'group-hover:text-purple-600 dark:group-hover:text-purple-200',
-      sub: 'text-[#537292] dark:text-purple-300/70',
-      extraClass: 'col-span-2 sm:col-span-1',
     },
   ];
 </script>
@@ -161,57 +192,32 @@
     <div class="mt-8 bg-white/95 dark:bg-[#152434]/95 border border-[#CCE4F7] dark:border-[#253D56] rounded-2xl p-6 sm:p-8 shadow-xl dark:shadow-2xl backdrop-blur-xl transition-colors duration-300">
       {#if errorMessage}
         <div class="mb-5 p-3 rounded-lg bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-center space-x-2">
-          <span class="h-2 w-2 rounded-full bg-rose-500 animate-ping"></span>
+          <span class="h-2 w-2 rounded-full bg-rose-500 animate-ping shrink-0"></span>
           <span>{errorMessage}</span>
         </div>
       {/if}
 
       <form onsubmit={handleLoginSubmit} class="space-y-4">
-        <!-- Email Field -->
+        <!-- Account ID Field -->
         <div>
-          <label class="block text-xs font-semibold text-[#305070] dark:text-slate-300 uppercase tracking-wider mb-1.5">
-            {$t.auth.emailLabel}
+          <label for="accountId" class="block text-xs font-semibold text-[#305070] dark:text-slate-300 uppercase tracking-wider mb-1.5">
+            {$t.auth.accountIdLabel}
           </label>
           <div class="relative">
-            <Mail class="absolute left-3.5 top-3 h-4 w-4 text-[#7899B8] dark:text-slate-500" />
+            <KeyRound class="absolute left-3.5 top-3 h-4 w-4 text-[#7899B8] dark:text-slate-500" />
             <input
-              type="email"
+              id="accountId"
+              type="text"
+              autocomplete="off"
+              maxlength="17"
               required
-              placeholder="admin@nexus.telecom"
-              bind:value={email}
-              class="w-full pl-10 pr-4 py-2.5 text-sm bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 dark:focus:ring-blue-500 text-[#0F1D2B] dark:text-white placeholder-[#7899B8] dark:placeholder-slate-500 transition"
+              placeholder={$t.auth.accountIdPlaceholder}
+              value={accountId}
+              oninput={handleAccountIdInput}
+              class="w-full pl-10 pr-4 py-2.5 text-sm bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 dark:focus:ring-blue-500 text-[#0F1D2B] dark:text-white placeholder-[#7899B8] dark:placeholder-slate-500 transition font-mono tracking-wider"
             />
           </div>
-        </div>
-
-        <!-- Password Field -->
-        <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <label class="block text-xs font-semibold text-[#305070] dark:text-slate-300 uppercase tracking-wider">
-              {$t.auth.passwordLabel}
-            </label>
-          </div>
-          <div class="relative">
-            <Lock class="absolute left-3.5 top-3 h-4 w-4 text-[#7899B8] dark:text-slate-500" />
-            <input
-              type={showPassword ? 'text' : 'password'}
-              required
-              placeholder="••••••••"
-              bind:value={password}
-              class="w-full pl-10 pr-10 py-2.5 text-sm bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 dark:focus:ring-blue-500 text-[#0F1D2B] dark:text-white placeholder-[#7899B8] dark:placeholder-slate-500 transition font-mono"
-            />
-            <button
-              type="button"
-              onclick={() => (showPassword = !showPassword)}
-              class="absolute right-3 top-2.5 text-[#7899B8] hover:text-[#0F1D2B] dark:text-slate-500 dark:hover:text-slate-300"
-            >
-              {#if showPassword}
-                <EyeOff class="h-4 w-4" />
-              {:else}
-                <Eye class="h-4 w-4" />
-              {/if}
-            </button>
-          </div>
+          <p class="mt-1.5 text-[11px] text-[#537292] dark:text-slate-400">{$t.auth.accountIdHint}</p>
         </div>
 
         <!-- Submit Button -->
@@ -226,7 +232,84 @@
         </div>
       </form>
 
-      <!-- Link to Register -->
+      <!-- Demo subscriber shortcut -->
+      {#if demoAccountId}
+        <div class="mt-4 p-3 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/50 flex items-center justify-between gap-3">
+          <div class="min-w-0">
+            <div class="text-[11px] font-bold text-purple-700 dark:text-purple-300">{$t.auth.demoAccountTitle}</div>
+            <div class="font-mono text-xs text-[#0F1D2B] dark:text-white truncate">{demoAccountId}</div>
+          </div>
+          <button
+            type="button"
+            onclick={() => { accountId = demoAccountId; signIn(demoAccountId); }}
+            class="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold bg-purple-600 hover:bg-purple-700 text-white transition active:scale-95"
+          >
+            {$t.common.login}
+          </button>
+        </div>
+      {/if}
+
+      <!-- Order lookup for customers whose Account ID has not been issued yet -->
+      <div class="mt-6 pt-6 border-t border-[#CCE4F7] dark:border-slate-800/80">
+        <div class="flex items-center space-x-1.5 text-xs font-semibold text-[#537292] dark:text-slate-400 mb-1.5">
+          <Search class="h-3.5 w-3.5 text-sky-600 dark:text-sky-400" />
+          <span>{$t.auth.trackTitle}</span>
+        </div>
+        <p class="text-[11px] text-[#537292] dark:text-slate-400 mb-2.5">{$t.auth.trackHint}</p>
+
+        <form onsubmit={handleTrackSubmit} class="flex items-center gap-2">
+          <input
+            type="text"
+            autocomplete="off"
+            placeholder={$t.auth.trackPlaceholder}
+            bind:value={orderQuery}
+            class="flex-1 min-w-0 px-3.5 py-2 text-sm bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl focus:outline-none focus:ring-2 focus:ring-sky-500 dark:focus:ring-blue-500 text-[#0F1D2B] dark:text-white placeholder-[#7899B8] dark:placeholder-slate-500 transition font-mono"
+          />
+          <button
+            type="submit"
+            class="shrink-0 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#EDF6FF] dark:bg-[#1E3349] hover:bg-[#D8ECFC] dark:hover:bg-[#253E58] text-[#1B2D40] dark:text-white border border-[#CCE4F7] dark:border-[#253D56] transition active:scale-95"
+          >
+            {$t.auth.trackButton}
+          </button>
+        </form>
+
+        {#if trackError}
+          <p class="mt-2 text-[11px] text-rose-600 dark:text-rose-400">{trackError}</p>
+        {:else if trackedOrder}
+          <div class="mt-3 p-3 rounded-xl bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] text-xs">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-mono font-bold text-[#0F1D2B] dark:text-white">{trackedOrder.id}</span>
+              <span class="text-[11px] font-semibold text-sky-700 dark:text-sky-300">
+                {$t.auth.trackStatusLabel}: {trackedOrder.status}
+              </span>
+            </div>
+
+            {#if trackedOrder.assignedAccountId}
+              <p class="mt-2 text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">
+                {$t.auth.trackAccountIssued}
+              </p>
+              <div class="mt-1 flex items-center justify-between gap-2">
+                <span class="font-mono font-bold text-[#0F1D2B] dark:text-white break-all">
+                  {trackedOrder.assignedAccountId}
+                </span>
+                <button
+                  type="button"
+                  onclick={() => { accountId = trackedOrder!.assignedAccountId!; signIn(accountId); }}
+                  class="shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-bold bg-sky-600 hover:bg-sky-700 text-white transition active:scale-95"
+                >
+                  {$t.common.login}
+                </button>
+              </div>
+            {:else if trackedOrder.status === 'Not Feasible'}
+              <p class="mt-2 text-[11px] text-rose-600 dark:text-rose-400">{$t.auth.trackRejected}</p>
+            {:else}
+              <p class="mt-2 text-[11px] text-amber-600 dark:text-amber-400">{$t.auth.trackPending}</p>
+            {/if}
+          </div>
+        {/if}
+      </div>
+
+      <!-- Link to the purchase flow: the only way to get an Account ID -->
       <div class="mt-5 text-center text-xs text-[#537292] dark:text-slate-400">
         <span>{$t.auth.noAccount} </span>
         <button
@@ -234,36 +317,37 @@
           onclick={() => navigate('/register')}
           class="font-bold text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center space-x-1"
         >
+          <ShoppingCart class="h-3 w-3" />
           <span>{$t.auth.registerLink}</span>
           <ArrowRight class="h-3 w-3" />
         </button>
       </div>
-        <!-- Quick 1-Click Role Login Chips -->
-        <div class="mt-6 pt-6 border-t border-[#CCE4F7] dark:border-slate-800/80">
-          <div class="flex items-center justify-between text-xs font-semibold text-[#537292] dark:text-slate-400 mb-3">
-            <span class="flex items-center space-x-1.5">
-              <Sparkles class="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" />
-              <span>{$t.auth.quickLoginTitle}</span>
-            </span>
-          </div>
 
-          <div class="grid grid-cols-2 gap-2 text-xs">
-            {#each quickRoles as qr (qr.role)}
-              <button
-                type="button"
-                onclick={() => handleQuickLogin(qr.role)}
-                class="p-2.5 rounded-lg {qr.chip} font-medium text-left transition flex items-center space-x-2 group {qr.extraClass || ''}"
-              >
-                <qr.Icon class="h-4 w-4 {qr.iconColor} shrink-0" />
-                <div class="truncate">
-                  <div class="font-bold text-[#0F1D2B] dark:text-white {qr.hoverText}">{qr.label}</div>
-                  <div class="text-[10px] {qr.sub} truncate">{qr.name}</div>
-                </div>
-              </button>
-            {/each}
-          </div>
+      <!-- Internal staff access by role -->
+      <div class="mt-6 pt-6 border-t border-[#CCE4F7] dark:border-slate-800/80">
+        <div class="flex items-center justify-between text-xs font-semibold text-[#537292] dark:text-slate-400 mb-3">
+          <span class="flex items-center space-x-1.5">
+            <Sparkles class="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" />
+            <span>{$t.auth.staffLoginTitle}</span>
+          </span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2 text-xs">
+          {#each staffRoles as sr (sr.role)}
+            <button
+              type="button"
+              onclick={() => handleStaffLogin(sr.role)}
+              class="p-2.5 rounded-lg {sr.chip} font-medium text-left transition flex items-center space-x-2 group"
+            >
+              <sr.Icon class="h-4 w-4 {sr.iconColor} shrink-0" />
+              <div class="truncate">
+                <div class="font-bold text-[#0F1D2B] dark:text-white {sr.hoverText}">{sr.label}</div>
+                <div class="text-[10px] {sr.sub} truncate">{sr.name}</div>
+              </div>
+            </button>
+          {/each}
         </div>
       </div>
     </div>
   </div>
-
+</div>

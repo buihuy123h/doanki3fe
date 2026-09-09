@@ -37,12 +37,24 @@
     'Distance to DP box exceeds standard copper/fiber specifications (> 850m). Excessive attenuation.'
   );
 
-  // CONNECTION MANAGER STATE (16-Digit Account ID Search & Toggle)
-  let techAccountSearch = $state('8820-4102-9931-1001');
+  // CONNECTION MANAGER STATE (16-char Account ID Search & Toggle)
+  let techAccountSearch = $state('T064-000000000001');
   let selectedConnection = $state(
-    $connections.find((c) => c.accountId === '8820-4102-9931-1001') || $connections[0] || null
+    $connections.find((c) => c.accountId === 'T064-000000000001') || $connections[0] || null
   );
   let statusChangeReason = $state('');
+
+  // Dial-Up feasibility has TWO legs (landline + internet). Track which the
+  // engineer has cleared per order until both pass (or the landline leg is
+  // waived because the customer already holds a Nexus landline).
+  let legChecks = $state<Record<string, { landline: boolean; internet: boolean }>>({});
+  const legFor = (o: Order) => legChecks[o.id] ?? { landline: false, internet: false };
+  const toggleLeg = (o: Order, leg: 'landline' | 'internet') => {
+    const cur = legFor(o);
+    legChecks = { ...legChecks, [o.id]: { ...cur, [leg]: !cur[leg] } };
+  };
+  // For a Dial-Up order, is the landline leg satisfied (checked or waived)?
+  const landlineLegDone = (o: Order) => !!o.existingLandlineAccountId || legFor(o).landline;
 
   // EQUIPMENT TRACKER STATE (Log new modems/routers)
   let isAddEquipmentModalOpen = $state(false);
@@ -60,12 +72,42 @@
 
   // ACTION HANDLERS: ORDER FEASIBILITY QUEUE
   const handleMarkFeasible = (order: Order) => {
-    updateOrderStatus(
+    // Dial-Up needs BOTH legs; other types need the single internet check.
+    if (order.connectionType === 'Dial-Up') {
+      const legs = legFor(order);
+      const landlineOk = landlineLegDone(order);
+      if (!landlineOk || !legs.internet) {
+        toast.error(
+          `Dial-Up feasibility incomplete — ${!landlineOk ? 'landline leg' : ''}${!landlineOk && !legs.internet ? ' & ' : ''}${!legs.internet ? 'internet leg' : ''} still pending.`
+        );
+        return;
+      }
+    }
+
+    const note =
+      order.connectionType === 'Dial-Up'
+        ? order.existingLandlineAccountId
+          ? `Customer holds Nexus landline ${order.existingLandlineAccountId}; landline leg waived. Internet (DSLAM port) leg verified OK.`
+          : 'Both legs verified: landline loop tested OK and internet DSLAM port available. Attenuation -16.5 dBm.'
+        : 'Field inspection verified: line loop within 250m, attenuation -16.5 dBm. DP Box capacity confirmed OK.';
+
+    // Confirming feasibility is what issues the customer's 16-char Account ID.
+    const updated = updateOrderStatus(
       order.id,
       'Feasible',
-      'Field inspection verified: Line loop within 250m, attenuation -16.5 dBm. DP Box capacity confirmed OK.'
+      note,
+      undefined,
+      undefined,
+      undefined,
+      order.connectionType === 'Dial-Up'
+        ? { landline: landlineLegDone(order), internet: legFor(order).internet }
+        : undefined
     );
-    toast.success(`Order ${order.id} marked as FEASIBLE. Ready for dispatch.`);
+    toast.success(
+      updated?.assignedAccountId
+        ? `Order ${order.id} marked as FEASIBLE. Account ID issued: ${updated.assignedAccountId}`
+        : `Order ${order.id} marked as FEASIBLE. Ready for dispatch.`
+    );
   };
 
   const handleOpenNotFeasibleModal = (order: Order) => {
@@ -103,7 +145,7 @@
     const createdConn = provisionConnectionForOrder(targetOrderForProvision.id, selectedDeviceSerial);
     if (createdConn) {
       toast.success(
-        `Connection Provided! Issued 16-digit Account ID: ${createdConn.accountId} with device ${selectedDeviceSerial}`
+        `Connection Provided! Issued 16-character Account ID: ${createdConn.accountId} with device ${selectedDeviceSerial}`
       );
       // Auto focus Connection Manager to this new account
       selectedConnection = createdConn;
@@ -292,6 +334,13 @@
                   <td class="px-4 py-3">
                     <span class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-200">{order.connectionType}</span>
                     <div class="text-xs text-slate-400 mt-1">{order.planName}</div>
+                    {#if order.connectionType === 'Dial-Up'}
+                      <div class="text-[10px] mt-1 {order.existingLandlineAccountId ? 'text-sky-400' : 'text-amber-400'}">
+                        {order.existingLandlineAccountId
+                          ? `Checks: internet only (has landline ${order.existingLandlineAccountId})`
+                          : 'Checks: landline + internet'}
+                      </div>
+                    {/if}
                   </td>
                   <td class="px-4 py-3 font-mono text-xs tabular-nums text-slate-300">
                     {order.cableDistanceMeters || 120} m
@@ -312,10 +361,34 @@
                           : 'bg-amber-950 text-amber-300 border border-amber-800/60'}">
                       {order.status}
                     </span>
+                    {#if order.assignedAccountId && order.status !== 'Connection Provided'}
+                      <div class="text-[10px] font-mono text-slate-400 mt-1">Account ID: {order.assignedAccountId}</div>
+                    {/if}
                   </td>
                   <td class="px-4 py-3 text-right">
-                    <div class="flex items-center justify-end gap-1.5">
+                    <div class="flex items-center justify-end gap-1.5 flex-wrap">
                       {#if order.status !== 'Connection Provided'}
+                        {#if order.connectionType === 'Dial-Up' && order.status !== 'Feasible' && order.status !== 'Not Feasible'}
+                          <button
+                            onclick={() => toggleLeg(order, 'landline')}
+                            disabled={!!order.existingLandlineAccountId}
+                            class="px-1.5 py-1 rounded text-[10px] font-semibold border transition {landlineLegDone(order)
+                              ? 'bg-emerald-600/20 text-emerald-400 border-emerald-600/30'
+                              : 'bg-slate-800 text-slate-400 border-slate-700'}"
+                            title="Toggle landline feasibility leg"
+                          >
+                            LL {landlineLegDone(order) ? '✓' : '…'}
+                          </button>
+                          <button
+                            onclick={() => toggleLeg(order, 'internet')}
+                            class="px-1.5 py-1 rounded text-[10px] font-semibold border transition {legFor(order).internet
+                              ? 'bg-emerald-600/20 text-emerald-400 border-emerald-600/30'
+                              : 'bg-slate-800 text-slate-400 border-slate-700'}"
+                            title="Toggle internet feasibility leg"
+                          >
+                            NET {legFor(order).internet ? '✓' : '…'}
+                          </button>
+                        {/if}
                         <button
                           onclick={() => handleMarkFeasible(order)}
                           class="px-2 py-1 rounded text-xs font-semibold bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-600/30 transition"
@@ -354,10 +427,10 @@
   <!-- TAB 2: CONNECTION MANAGER -->
   {#if activeTab === 'connection-manager'}
     <div class="space-y-6">
-      <!-- Search 16-digit Account ID -->
+      <!-- Search 16-character Account ID -->
       <div class="bg-slate-900 p-5 rounded-xl border border-slate-800 shadow space-y-3">
         <label class="block text-xs font-mono font-semibold uppercase tracking-wider text-slate-400">
-          Lookup Subscriber Connection by 16-Digit Account ID
+          Lookup Subscriber Connection by 16-character Account ID
         </label>
 
         <div class="flex gap-2">
@@ -365,7 +438,7 @@
             <Search class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
             <input
               type="text"
-              placeholder="XXXX-XXXX-XXXX-XXXX"
+              placeholder="T064-000000000001"
               bind:value={techAccountSearch}
               class="w-full pl-9 pr-4 py-2.5 text-base font-mono bg-slate-950 border border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500 text-amber-300 tracking-widest"
             />
@@ -531,7 +604,7 @@
         </div>
       {:else}
         <div class="text-center py-12 text-slate-500 font-mono">
-          Select or query a 16-digit Account ID to inspect circuit telemetry.
+          Select or query a 16-character Account ID to inspect circuit telemetry.
         </div>
       {/if}
     </div>
@@ -569,7 +642,7 @@
                 <th class="px-4 py-3">MAC Address</th>
                 <th class="px-4 py-3">Device Model & Type</th>
                 <th class="px-4 py-3">Firmware Build</th>
-                <th class="px-4 py-3">Assigned 16-Digit Account</th>
+                <th class="px-4 py-3">Assigned 16-char Account</th>
                 <th class="px-4 py-3">Subscriber</th>
                 <th class="px-4 py-3">Hardware Status</th>
               </tr>
@@ -660,7 +733,7 @@
               <span>Automated System Action:</span>
             </div>
             <p>
-              Confirming will update status to <strong>Connection Provided</strong>, bind hardware serial, and generate an official <strong>16-digit Account ID</strong> for billing.
+              Confirming will update status to <strong>Connection Provided</strong>, bind hardware serial, and generate an official <strong>16-character Account ID</strong> for billing.
             </p>
           </div>
 

@@ -17,6 +17,13 @@ export function navigate(to: string) {
   window.location.hash = to;
 }
 
+// Reads a query param from the hash (e.g. '#/register?plan=plan-bb-01').
+export function queryParam(name: string): string | null {
+  const h = window.location.hash.replace(/^#/, '');
+  const q = h.split('?')[1];
+  return q ? new URLSearchParams(q).get(name) : null;
+}
+
 // Build a role-isolated dashboard path (mirrors ProtectedRoute's roleRoutes map)
 export function dashboardPathForRole(role: string): string {
   const map: Record<string, string> = {
