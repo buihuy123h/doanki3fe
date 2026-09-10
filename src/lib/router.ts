@@ -17,6 +17,25 @@ export function navigate(to: string) {
   window.location.hash = to;
 }
 
+export const activeTabOverride = writable<{ path: string; tab: string } | null>(null);
+
+export function navigateTo(path: string, tab?: string) {
+  if (tab) {
+    activeTabOverride.set({ path, tab });
+    window.location.hash = `${path}?tab=${tab}`;
+  } else {
+    activeTabOverride.set(null);
+    window.location.hash = path;
+  }
+}
+
+// Reads a query param from the hash (e.g. '#/register?plan=plan-bb-01').
+export function queryParam(name: string): string | null {
+  const h = window.location.hash.replace(/^#/, '');
+  const q = h.split('?')[1];
+  return q ? new URLSearchParams(q).get(name) : null;
+}
+
 // Build a role-isolated dashboard path (mirrors ProtectedRoute's roleRoutes map)
 export function dashboardPathForRole(role: string): string {
   const map: Record<string, string> = {

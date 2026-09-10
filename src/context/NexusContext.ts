@@ -1,103 +1,253 @@
 import { writable, get } from 'svelte/store';
-import type {
-  Plan,
-  Employee,
-  Vendor,
-  RetailShop,
-  InventoryItem,
-  Order,
-  Connection,
-  Equipment,
-  Bill,
-  PaymentRecord,
-  SystemSettings,
-  OrderStatus,
-  ConnectionStatus,
-  RoleType,
+import {
+  CONNECTION_TYPE_LETTER,
+  getBulkDiscountPercent,
+  type Plan,
+  type Employee,
+  type Vendor,
+  type RetailShop,
+  type InventoryItem,
+  type Order,
+  type Connection,
+  type Equipment,
+  type Bill,
+  type PaymentRecord,
+  type Feedback,
+  type SystemSettings,
+  type OrderStatus,
+  type ConnectionStatus,
+  type ConnectionType,
+  type RoleType,
 } from '../types/nexus';
 
-// Helper to generate 11-digit Alphanumeric Order ID (e.g. D0000000001)
-export function generateOrderId(type: 'Broadband' | 'Dial-Up' | 'Landline', count: number): string {
-  const prefix = type === 'Dial-Up' ? 'D' : type === 'Broadband' ? 'B' : 'L';
-  const numPart = String(count).padStart(10, '0');
-  return `${prefix}${numPart}`;
+export { getBulkDiscountPercent };
+
+// 11-char Order ID: prefix D/B/T + 10-digit serial (e.g. D0000000001)
+export function generateOrderId(type: ConnectionType, count: number): string {
+  const prefix = CONNECTION_TYPE_LETTER[type];
+  return `${prefix}${String(count).padStart(10, '0')}`;
 }
 
-// Helper to generate 16-digit formatted Account ID (e.g. 8820-4102-9931-1005)
-export function generateAccountId(): string {
-  const part = () => Math.floor(1000 + Math.random() * 9000).toString();
-  return `${part()}-${part()}-${part()}-${part()}`;
+// Display form: T064-000000000001
+export function formatAccountId(raw: string): string {
+  const s = (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  return s.length > 4 ? `${s.slice(0, 4)}-${s.slice(4)}` : s;
+}
+
+// 16-char Account ID per spec: [type letter D/B/T][3-digit city code][12-digit serial]
+// Returned in the canonical dashed display form (T064-000000000001).
+export function generateAccountId(type: ConnectionType, cityCode: string, serial: number): string {
+  const letter = CONNECTION_TYPE_LETTER[type];
+  const city = (cityCode || '999').replace(/\D/g, '').padStart(3, '0').slice(0, 3);
+  return formatAccountId(`${letter}${city}${String(serial).padStart(12, '0')}`);
+}
+
+// Bare comparison key (drops the dash) so lookups are format-agnostic.
+export function accountIdKey(raw: string): string {
+  return (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 // ============ INITIAL MOCK DATA (identical to React version) ============
 
+// Security deposit by connection type (spec): Dial-Up 325 / Broadband 500 / Landline 250
+const DEPOSIT = { 'Dial-Up': 325, Broadband: 500, Landline: 250 } as const;
+
+// Tariff catalogue transcribed from the spec's Financial pricing tables.
 const INITIAL_PLANS: Plan[] = [
+  // ---- Dial-Up ----
   {
-    id: 'plan-bb-01',
-    name: 'Broadband Fiber Ultra Giga',
-    type: 'Broadband',
-    speedOrBandwidth: '300 Mbps Fiber Symmetrical',
-    monthlyRental: 79.99,
-    securityDeposit: 75.0,
-    dataLimit: 'Unlimited High-Speed',
+    id: 'plan-du-h10',
+    name: 'Dial-Up Hourly 10 Hrs',
+    type: 'Dial-Up',
+    speedOrBandwidth: '56 Kbps V.92',
+    monthlyRental: 50,
+    securityDeposit: DEPOSIT['Dial-Up'],
+    dataLimit: '10 Hours',
     status: 'Active',
-    description: 'Ultra-low latency FTTH broadband ideal for enterprises, power users, and multi-device streaming.',
+    billingCycle: 'Hourly Pack',
+    validity: '1 Month',
+    includedHours: 10,
+    description: 'Prepaid 10-hour dial-up pack, valid for one month.',
   },
   {
-    id: 'plan-bb-02',
-    name: 'Broadband Home Starter',
-    type: 'Broadband',
-    speedOrBandwidth: '100 Mbps Fiber',
-    monthlyRental: 49.99,
-    securityDeposit: 50.0,
+    id: 'plan-du-h30',
+    name: 'Dial-Up Hourly 30 Hrs',
+    type: 'Dial-Up',
+    speedOrBandwidth: '56 Kbps V.92',
+    monthlyRental: 130,
+    securityDeposit: DEPOSIT['Dial-Up'],
+    dataLimit: '30 Hours',
+    status: 'Active',
+    billingCycle: 'Hourly Pack',
+    validity: '3 Months',
+    includedHours: 30,
+    description: 'Prepaid 30-hour dial-up pack, valid for three months.',
+  },
+  {
+    id: 'plan-du-h60',
+    name: 'Dial-Up Hourly 60 Hrs',
+    type: 'Dial-Up',
+    speedOrBandwidth: '56 Kbps V.92',
+    monthlyRental: 260,
+    securityDeposit: DEPOSIT['Dial-Up'],
+    dataLimit: '60 Hours',
+    status: 'Active',
+    billingCycle: 'Hourly Pack',
+    validity: '6 Months',
+    includedHours: 60,
+    description: 'Prepaid 60-hour dial-up pack, valid for six months.',
+  },
+  {
+    id: 'plan-du-28',
+    name: 'Dial-Up Unlimited 28 Kbps',
+    type: 'Dial-Up',
+    speedOrBandwidth: '28 Kbps',
+    monthlyRental: 75,
+    securityDeposit: DEPOSIT['Dial-Up'],
     dataLimit: 'Unlimited',
     status: 'Active',
-    description: 'High-speed fiber connection suited for standard family households and remote working.',
+    billingCycle: 'Monthly',
+    validity: '1 Month',
+    description: 'Unlimited dial-up access at 28 Kbps. Quarterly billing also available at $150.',
   },
   {
-    id: 'plan-du-01',
-    name: 'Dial-Up Heritage Connect',
+    id: 'plan-du-56',
+    name: 'Dial-Up Unlimited 56 Kbps',
     type: 'Dial-Up',
-    speedOrBandwidth: '56 Kbps V.92 / V.44',
-    monthlyRental: 14.99,
-    hourlyCharge: 0.75,
-    securityDeposit: 20.0,
-    dataLimit: 'Metered Dial-Up',
+    speedOrBandwidth: '56 Kbps',
+    monthlyRental: 100,
+    securityDeposit: DEPOSIT['Dial-Up'],
+    dataLimit: 'Unlimited',
     status: 'Active',
-    description: 'Reliable PSTN modem dial-up backup channel for point-of-sale terminals and legacy SCADA systems.',
+    billingCycle: 'Monthly',
+    validity: '1 Month',
+    description: 'Unlimited dial-up access at 56 Kbps. Quarterly billing also available at $180.',
+  },
+  // ---- Broadband ----
+  {
+    id: 'plan-bb-h30',
+    name: 'Broadband Hourly 30 Hrs',
+    type: 'Broadband',
+    speedOrBandwidth: 'Broadband',
+    monthlyRental: 175,
+    securityDeposit: DEPOSIT.Broadband,
+    dataLimit: '30 Hours',
+    status: 'Active',
+    billingCycle: 'Hourly Pack',
+    validity: '1 Month',
+    includedHours: 30,
+    description: 'Prepaid 30-hour broadband pack, valid for one month.',
   },
   {
-    id: 'plan-du-02',
-    name: 'Dial-Up Classic Unlimited',
-    type: 'Dial-Up',
-    speedOrBandwidth: '56 Kbps Unthrottled',
-    monthlyRental: 24.99,
-    securityDeposit: 25.0,
-    dataLimit: 'Unlimited Hours',
+    id: 'plan-bb-h60',
+    name: 'Broadband Hourly 60 Hrs',
+    type: 'Broadband',
+    speedOrBandwidth: 'Broadband',
+    monthlyRental: 315,
+    securityDeposit: DEPOSIT.Broadband,
+    dataLimit: '60 Hours',
     status: 'Active',
-    description: 'Flat-rate dial-up internet access with nationwide toll-free POP access numbers.',
+    billingCycle: 'Hourly Pack',
+    validity: '6 Months',
+    includedHours: 60,
+    description: 'Prepaid 60-hour broadband pack, valid for six months.',
   },
   {
-    id: 'plan-ll-01',
-    name: 'Landline Crystal Fiber Voice',
+    id: 'plan-bb-64',
+    name: 'Broadband Unlimited 64 Kbps',
+    type: 'Broadband',
+    speedOrBandwidth: '64 Kbps',
+    monthlyRental: 225,
+    securityDeposit: DEPOSIT.Broadband,
+    dataLimit: 'Unlimited',
+    status: 'Active',
+    billingCycle: 'Monthly',
+    validity: '1 Month',
+    description: 'Unlimited broadband at 64 Kbps. Quarterly billing also available at $400.',
+  },
+  {
+    id: 'plan-bb-128',
+    name: 'Broadband Unlimited 128 Kbps',
+    type: 'Broadband',
+    speedOrBandwidth: '128 Kbps',
+    monthlyRental: 350,
+    securityDeposit: DEPOSIT.Broadband,
+    dataLimit: 'Unlimited',
+    status: 'Active',
+    billingCycle: 'Monthly',
+    validity: '1 Month',
+    description: 'Unlimited broadband at 128 Kbps. Quarterly billing also available at $445.',
+  },
+  // ---- Landline (telephone only) ----
+  {
+    id: 'plan-ll-local-y',
+    name: 'Landline Local — Unlimited (Yearly)',
     type: 'Landline',
-    speedOrBandwidth: 'HD VoIP Digital Audio',
-    monthlyRental: 19.99,
-    securityDeposit: 30.0,
-    dataLimit: 'Unlimited Domestic Voice',
+    speedOrBandwidth: 'PSTN Voice',
+    monthlyRental: 75,
+    securityDeposit: DEPOSIT.Landline,
+    dataLimit: 'Unlimited Local',
     status: 'Active',
-    description: 'Crystal-clear digital VoIP fixed-line phone with caller ID, call waiting, and 3-way conference.',
+    billingCycle: 'Yearly',
+    validity: '1 Year',
+    callRates: 'Local: 55¢/min',
+    description: 'Local plan, yearly rental. Call charges billed on top of the rental.',
   },
   {
-    id: 'plan-ll-02',
-    name: 'Landline Standard Copper PSTN',
+    id: 'plan-ll-local-m',
+    name: 'Landline Local — Monthly',
     type: 'Landline',
-    speedOrBandwidth: 'Standard POTS Copper',
-    monthlyRental: 11.99,
-    securityDeposit: 20.0,
-    dataLimit: '100 Free Call Minutes',
+    speedOrBandwidth: 'PSTN Voice',
+    monthlyRental: 35,
+    securityDeposit: DEPOSIT.Landline,
+    dataLimit: 'Local Calling',
     status: 'Active',
-    description: 'Traditional analog copper wire telephone connection with power-outage lifeline reliability.',
+    billingCycle: 'Monthly',
+    validity: '1 Month',
+    callRates: 'Local: 75¢/min',
+    description: 'Local plan, monthly rental. Call charges billed on top of the rental.',
+  },
+  {
+    id: 'plan-ll-std-m',
+    name: 'Landline STD — Monthly',
+    type: 'Landline',
+    speedOrBandwidth: 'PSTN Voice',
+    monthlyRental: 125,
+    securityDeposit: DEPOSIT.Landline,
+    dataLimit: 'Local + STD',
+    status: 'Active',
+    billingCycle: 'Monthly',
+    validity: '1 Month',
+    callRates: 'Local: 70¢/min · STD: $2.25/min · SMS to mobile: $1.00/min',
+    description: 'STD plan, monthly rental with local, STD and mobile-messaging call charges.',
+  },
+  {
+    id: 'plan-ll-std-h',
+    name: 'Landline STD — Half-Yearly',
+    type: 'Landline',
+    speedOrBandwidth: 'PSTN Voice',
+    monthlyRental: 420,
+    securityDeposit: DEPOSIT.Landline,
+    dataLimit: 'Local + STD',
+    status: 'Active',
+    billingCycle: 'Half-Yearly',
+    validity: '6 Months',
+    callRates: 'Local: 60¢/min · STD: $2.00/min · SMS to mobile: $1.15/min',
+    description: 'STD plan, half-yearly rental with reduced call charges.',
+  },
+  {
+    id: 'plan-ll-std-y',
+    name: 'Landline STD — Yearly',
+    type: 'Landline',
+    speedOrBandwidth: 'PSTN Voice',
+    monthlyRental: 780,
+    securityDeposit: DEPOSIT.Landline,
+    dataLimit: 'Local + STD',
+    status: 'Active',
+    billingCycle: 'Yearly',
+    validity: '1 Year',
+    callRates: 'Local: 60¢/min · STD: $1.75/min · SMS to mobile: $1.25/min',
+    description: 'STD plan, yearly rental with the lowest call charges.',
   },
 ];
 
@@ -212,12 +362,25 @@ const INITIAL_VENDORS: Vendor[] = [
   },
 ];
 
+// 3-digit numeric code assigned to each city within the territory (used in Account IDs).
+export const CITY_CODES: Record<string, string> = {
+  'New York': '064',
+  Queens: '072',
+  Brooklyn: '081',
+  Manhattan: '064',
+};
+
+export function cityCodeFor(city: string): string {
+  return CITY_CODES[city] ?? '999';
+}
+
 const INITIAL_RETAIL_SHOPS: RetailShop[] = [
   {
     id: 'sh-01',
     shopCode: 'SH-01',
     name: 'Downtown Nexus Flagship Store',
     city: 'New York',
+    cityCode: '064',
     address: '452 Broadway, Manhattan, NY 10013',
     managerName: 'David Chen',
     phone: '+1 (212) 555-0144',
@@ -230,6 +393,7 @@ const INITIAL_RETAIL_SHOPS: RetailShop[] = [
     shopCode: 'SH-02',
     name: 'Metro Uptown Tech Hub',
     city: 'New York',
+    cityCode: '064',
     address: '2190 Broadway, Upper West Side, NY 10024',
     managerName: 'Aiden Brooks',
     phone: '+1 (212) 555-0189',
@@ -242,6 +406,7 @@ const INITIAL_RETAIL_SHOPS: RetailShop[] = [
     shopCode: 'SH-03',
     name: 'Queens Central Service Center',
     city: 'Queens',
+    cityCode: '072',
     address: '70-20 Austin St, Forest Hills, NY 11375',
     managerName: 'Kavita Patel',
     phone: '+1 (718) 555-0199',
@@ -254,6 +419,7 @@ const INITIAL_RETAIL_SHOPS: RetailShop[] = [
     shopCode: 'SH-04',
     name: 'Brooklyn Nexus Connect Depot',
     city: 'Brooklyn',
+    cityCode: '081',
     address: '320 Atlantic Ave, Boerum Hill, NY 11201',
     managerName: 'Robert Gomez',
     phone: '+1 (718) 555-0210',
@@ -331,8 +497,8 @@ const INITIAL_ORDERS: Order[] = [
     idProofType: 'National ID Card',
     idProofNumber: 'ID-US-9918231',
     connectionType: 'Dial-Up',
-    planId: 'plan-du-01',
-    planName: 'Dial-Up Heritage Connect',
+    planId: 'plan-du-56',
+    planName: 'Dial-Up Unlimited 56 Kbps',
     retailOutletCode: 'SH-02',
     retailEmployeeName: 'David Chen',
     createdAt: '2026-09-04 10:30',
@@ -340,6 +506,9 @@ const INITIAL_ORDERS: Order[] = [
     cableDistanceMeters: 420,
     dpBoxCapacity: 'Port 6 Available / DP-B12',
     signalLossDbm: -18.5,
+    bulkConnectionsCount: 1,
+    bulkDiscountPercent: 0,
+    // New Dial-Up customer with no Nexus landline yet: both legs need a check.
   },
   {
     id: 'B0000000002',
@@ -350,19 +519,23 @@ const INITIAL_ORDERS: Order[] = [
     idProofType: 'Passport',
     idProofNumber: 'P-98827419',
     connectionType: 'Broadband',
-    planId: 'plan-bb-01',
-    planName: 'Broadband Fiber Ultra Giga',
+    planId: 'plan-bb-128',
+    planName: 'Broadband Unlimited 128 Kbps',
     retailOutletCode: 'SH-01',
     retailEmployeeName: 'David Chen',
     createdAt: '2026-09-04 14:15',
     status: 'Feasible',
+    assignedAccountId: 'B064-000000000005',
     feasibilityNotes: 'Fiber termination box available within 85m. Signal strength -16.2 dBm (Excellent). Line tested OK.',
     cableDistanceMeters: 85,
     dpBoxCapacity: 'Port 2 Available / DP-S04',
     signalLossDbm: -16.2,
+    bulkConnectionsCount: 1,
+    bulkDiscountPercent: 0,
+    internetFeasible: true,
   },
   {
-    id: 'L0000000003',
+    id: 'T0000000003',
     customerName: 'Highline Consulting LLC',
     customerPhone: '+1 (555) 777-8899',
     customerEmail: 'office@highlineconsulting.com',
@@ -370,17 +543,20 @@ const INITIAL_ORDERS: Order[] = [
     idProofType: "Driver's License",
     idProofNumber: 'DL-NY-2940192',
     connectionType: 'Landline',
-    planId: 'plan-ll-01',
-    planName: 'Landline Crystal Fiber Voice',
+    planId: 'plan-ll-std-m',
+    planName: 'Landline STD — Monthly',
     retailOutletCode: 'SH-01',
     retailEmployeeName: 'David Chen',
     createdAt: '2026-09-02 09:00',
     status: 'Connection Provided',
-    assignedAccountId: '8820-4102-9931-1001',
-    feasibilityNotes: 'Optical loop line deployed. Fiber ATA installed and tested. Audio quality verified.',
+    assignedAccountId: 'T064-000000000001',
+    feasibilityNotes: 'Copper loop line deployed. Line tested and audio quality verified.',
     cableDistanceMeters: 120,
     dpBoxCapacity: 'Port 8 Dedicated',
     signalLossDbm: -15.1,
+    bulkConnectionsCount: 12, // corporate order — 12 lines => 25% scheme discount
+    bulkDiscountPercent: 25,
+    landlineFeasible: true,
   },
   {
     id: 'B0000000004',
@@ -391,8 +567,8 @@ const INITIAL_ORDERS: Order[] = [
     idProofType: 'National ID Card',
     idProofNumber: 'ID-US-8827391',
     connectionType: 'Broadband',
-    planId: 'plan-bb-02',
-    planName: 'Broadband Home Starter',
+    planId: 'plan-bb-64',
+    planName: 'Broadband Unlimited 64 Kbps',
     retailOutletCode: 'SH-03',
     retailEmployeeName: 'Aiden Brooks',
     createdAt: '2026-09-03 11:45',
@@ -401,21 +577,24 @@ const INITIAL_ORDERS: Order[] = [
     cableDistanceMeters: 1150,
     dpBoxCapacity: 'No Spare Ports',
     signalLossDbm: -34.0,
+    bulkConnectionsCount: 1,
+    bulkDiscountPercent: 0,
+    internetFeasible: false,
   },
 ];
 
 const INITIAL_CONNECTIONS: Connection[] = [
   {
-    accountId: '8820-4102-9931-1001',
-    orderId: 'L0000000003',
+    accountId: 'T064-000000000001',
+    orderId: 'T0000000003',
     customerName: 'Highline Consulting LLC',
     customerPhone: '+1 (555) 777-8899',
     customerEmail: 'office@highlineconsulting.com',
     installationAddress: '55 Hudson Yards, Fl 18, New York, NY 10001',
     connectionType: 'Landline',
-    planName: 'Landline Crystal Fiber Voice',
-    monthlyRental: 19.99,
-    securityDeposit: 30.0,
+    planName: 'Landline STD — Monthly',
+    monthlyRental: 125,
+    securityDeposit: 250,
     status: 'Active',
     ipAddress: '198.51.100.42',
     portNumber: 'VOIP-ETH-1',
@@ -425,16 +604,16 @@ const INITIAL_CONNECTIONS: Connection[] = [
     lastUpdated: '2026-09-02 16:30',
   },
   {
-    accountId: '8820-4102-9931-1002',
+    accountId: 'B064-000000000002',
     orderId: 'B0000000005',
     customerName: 'Victoria Sterling',
     customerPhone: '+1 (555) 441-2099',
     customerEmail: 'v.sterling@apexlegal.org',
     installationAddress: '120 E 64th St, Manhattan, NY 10065',
     connectionType: 'Broadband',
-    planName: 'Broadband Fiber Ultra Giga',
-    monthlyRental: 79.99,
-    securityDeposit: 75.0,
+    planName: 'Broadband Unlimited 64 Kbps',
+    monthlyRental: 225,
+    securityDeposit: 500,
     status: 'Active',
     ipAddress: '203.0.113.88',
     portNumber: 'GPON-0/1/4',
@@ -444,16 +623,16 @@ const INITIAL_CONNECTIONS: Connection[] = [
     lastUpdated: '2026-08-15 11:20',
   },
   {
-    accountId: '8820-4102-9931-1003',
+    accountId: 'D064-000000000003',
     orderId: 'D0000000006',
     customerName: 'Retro Arcade Lounge LLC',
     customerPhone: '+1 (555) 332-9011',
     customerEmail: 'manager@retroarcadeny.com',
     installationAddress: '31 St Marks pl, East Village, NY 10003',
     connectionType: 'Dial-Up',
-    planName: 'Dial-Up Classic Unlimited',
-    monthlyRental: 24.99,
-    securityDeposit: 25.0,
+    planName: 'Dial-Up Unlimited 56 Kbps',
+    monthlyRental: 100,
+    securityDeposit: 325,
     status: 'Temporarily Inactive',
     ipAddress: '192.0.2.14',
     portNumber: 'PSTN-LINE-4',
@@ -464,16 +643,16 @@ const INITIAL_CONNECTIONS: Connection[] = [
     lastStatusReason: 'Customer requested seasonal suspension during venue renovation.',
   },
   {
-    accountId: '8820-4102-9931-1004',
+    accountId: 'B081-000000000004',
     orderId: 'B0000000007',
     customerName: 'Jonathan Meyer',
     customerPhone: '+1 (555) 881-2300',
     customerEmail: 'j.meyer@brooklynloft.io',
     installationAddress: '175 Water St, Dumbo, Brooklyn, NY 11201',
     connectionType: 'Broadband',
-    planName: 'Broadband Home Starter',
-    monthlyRental: 49.99,
-    securityDeposit: 50.0,
+    planName: 'Broadband Unlimited 64 Kbps',
+    monthlyRental: 225,
+    securityDeposit: 500,
     status: 'Permanently Inactive',
     assignedDeviceSerial: 'NX-HW-992811',
     assignedDeviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
@@ -490,7 +669,7 @@ const INITIAL_EQUIPMENTS: Equipment[] = [
     macAddress: 'BC:A9:93:21:44:8E',
     deviceModel: 'Huawei EchoLife HG8245H5 GPON ONT',
     deviceType: 'Fiber ONT Modem',
-    assignedAccountId: '8820-4102-9931-1002',
+    assignedAccountId: 'B064-000000000002',
     assignedCustomerName: 'Victoria Sterling',
     firmwareVersion: 'V500R019C20SPC120',
     status: 'In Service',
@@ -503,7 +682,7 @@ const INITIAL_EQUIPMENTS: Equipment[] = [
     macAddress: '00:0B:82:76:D4:11',
     deviceModel: 'Grandstream HT802 2-Port Analog VoIP Adapter',
     deviceType: 'Analog Telephone Adapter',
-    assignedAccountId: '8820-4102-9931-1001',
+    assignedAccountId: 'T064-000000000001',
     assignedCustomerName: 'Highline Consulting LLC',
     firmwareVersion: '1.0.35.3',
     status: 'In Service',
@@ -516,7 +695,7 @@ const INITIAL_EQUIPMENTS: Equipment[] = [
     macAddress: 'F8:E4:FB:99:A2:03',
     deviceModel: 'USRobotics 56K V.92 Faxmodem USB/PSTN',
     deviceType: 'VDSL2/ADSL Modem',
-    assignedAccountId: '8820-4102-9931-1003',
+    assignedAccountId: 'D064-000000000003',
     assignedCustomerName: 'Retro Arcade Lounge LLC',
     firmwareVersion: 'v2.1.8-PSTN',
     status: 'In Service',
@@ -556,28 +735,30 @@ const INITIAL_BILLS: Bill[] = [
   {
     id: 'bill-01',
     invoiceNumber: 'NEX-INV-2026-001',
-    accountId: '8820-4102-9931-1002',
+    accountId: 'B064-000000000002',
     customerName: 'Victoria Sterling',
     billingMonth: 'August 2026',
     billingDate: '2026-08-15',
     dueDate: '2026-09-05',
-    planName: 'Broadband Fiber Ultra Giga',
+    planName: 'Broadband Unlimited 64 Kbps',
     connectionType: 'Broadband',
-    securityDeposit: 75.0,
-    monthlyRental: 79.99,
-    hourlyCharges: 0.0,
-    subtotal: 154.99, // 75.0 + 79.99
+    securityDeposit: 500,
+    monthlyRental: 225,
+    hourlyCharges: 0,
+    discountPercent: 0,
+    discountAmount: 0,
+    subtotal: 725, // 500 + 225 - 0
     serviceTaxRate: 12.24,
-    serviceTaxAmount: 18.97, // 154.99 * 0.1224 = 18.97
-    totalAmount: 173.96, // 154.99 + 18.97
-    amountPaid: 173.96,
-    dueAmount: 0.0,
+    serviceTaxAmount: 88.74, // 725 * 0.1224
+    totalAmount: 813.74, // 725 + 88.74
+    amountPaid: 813.74,
+    dueAmount: 0,
     status: 'Paid',
     paymentHistory: [
       {
         paymentId: 'PAY-89201',
         paymentDate: '2026-08-20',
-        amountPaid: 173.96,
+        amountPaid: 813.74,
         paymentMode: 'Credit/Debit Card',
         referenceNumber: 'TXN-VISA-994821',
         recordedBy: 'Elena Rostova',
@@ -587,28 +768,30 @@ const INITIAL_BILLS: Bill[] = [
   {
     id: 'bill-02',
     invoiceNumber: 'NEX-INV-2026-002',
-    accountId: '8820-4102-9931-1001',
+    accountId: 'T064-000000000001',
     customerName: 'Highline Consulting LLC',
     billingMonth: 'September 2026',
     billingDate: '2026-09-02',
     dueDate: '2026-09-22',
-    planName: 'Landline Crystal Fiber Voice',
+    planName: 'Landline STD — Monthly',
     connectionType: 'Landline',
-    securityDeposit: 30.0,
-    monthlyRental: 19.99,
-    hourlyCharges: 0.0,
-    subtotal: 49.99, // 30.0 + 19.99
+    securityDeposit: 250,
+    monthlyRental: 125,
+    hourlyCharges: 0,
+    discountPercent: 25, // 12-line corporate order
+    discountAmount: 93.75, // 25% of (250 + 125)
+    subtotal: 281.25, // 250 + 125 - 93.75
     serviceTaxRate: 12.24,
-    serviceTaxAmount: 6.12, // 49.99 * 0.1224 = 6.118776 -> 6.12
-    totalAmount: 56.11, // 49.99 + 6.12
-    amountPaid: 30.0,
-    dueAmount: 26.11,
+    serviceTaxAmount: 34.43, // 281.25 * 0.1224
+    totalAmount: 315.68, // 281.25 + 34.43
+    amountPaid: 100,
+    dueAmount: 215.68,
     status: 'Partially Paid',
     paymentHistory: [
       {
         paymentId: 'PAY-89205',
         paymentDate: '2026-09-03',
-        amountPaid: 30.0,
+        amountPaid: 100,
         paymentMode: 'Bank Transfer/NEFT',
         referenceNumber: 'ACH-CITI-449102',
         recordedBy: 'Elena Rostova',
@@ -617,13 +800,39 @@ const INITIAL_BILLS: Bill[] = [
   },
 ];
 
+const INITIAL_FEEDBACKS: Feedback[] = [
+  {
+    id: 'fb-01',
+    accountId: 'B064-000000000002',
+    orderId: 'B0000000005',
+    customerName: 'Victoria Sterling',
+    rating: 5,
+    category: 'Installation',
+    message: 'Field engineer arrived on time and the fibre line was live within an hour. Very smooth.',
+    createdAt: '2026-08-16 09:12',
+    response: 'Thank you for the kind words — we have shared this with the SH-01 install team.',
+    respondedBy: 'Sarah Jenkins',
+    respondedAt: '2026-08-16 15:40',
+  },
+  {
+    id: 'fb-02',
+    accountId: 'D064-000000000003',
+    orderId: 'D0000000006',
+    customerName: 'Retro Arcade Lounge LLC',
+    rating: 3,
+    category: 'Support',
+    message: 'Took two calls to get the seasonal suspension applied. Please make this self-service.',
+    createdAt: '2026-09-01 11:05',
+  },
+];
+
 const INITIAL_SETTINGS: SystemSettings = {
   serviceTaxRate: 12.24, // As explicitly specified: Service Tax (12.24%)
   latePaymentFeePercent: 5.0,
   defaultSecurityDeposits: {
-    Broadband: 75.0,
-    'Dial-Up': 20.0,
-    Landline: 30.0,
+    Broadband: 500,
+    'Dial-Up': 325,
+    Landline: 250,
   },
   installationGracePeriodDays: 7,
 };
@@ -648,29 +857,33 @@ function persist(key: string) {
 // ============ STORE CREATION ============
 
 function createNexusStore() {
+  // Bumped when the seed schema changes so stale localStorage is not reloaded.
+  const V = '_v2';
   const currentRole = writable<RoleType>('admin');
-  const plans = writable<Plan[]>(loadFromStorage('nexus_plans', INITIAL_PLANS));
-  const employees = writable<Employee[]>(loadFromStorage('nexus_employees', INITIAL_EMPLOYEES));
-  const vendors = writable<Vendor[]>(loadFromStorage('nexus_vendors', INITIAL_VENDORS));
-  const retailShops = writable<RetailShop[]>(loadFromStorage('nexus_retailShops', INITIAL_RETAIL_SHOPS));
-  const inventory = writable<InventoryItem[]>(loadFromStorage('nexus_inventory', INITIAL_INVENTORY));
-  const orders = writable<Order[]>(loadFromStorage('nexus_orders', INITIAL_ORDERS));
-  const connections = writable<Connection[]>(loadFromStorage('nexus_connections', INITIAL_CONNECTIONS));
-  const equipments = writable<Equipment[]>(loadFromStorage('nexus_equipments', INITIAL_EQUIPMENTS));
-  const bills = writable<Bill[]>(loadFromStorage('nexus_bills', INITIAL_BILLS));
-  const settings = writable<SystemSettings>(loadFromStorage('nexus_settings', INITIAL_SETTINGS));
+  const plans = writable<Plan[]>(loadFromStorage('nexus_plans' + V, INITIAL_PLANS));
+  const employees = writable<Employee[]>(loadFromStorage('nexus_employees' + V, INITIAL_EMPLOYEES));
+  const vendors = writable<Vendor[]>(loadFromStorage('nexus_vendors' + V, INITIAL_VENDORS));
+  const retailShops = writable<RetailShop[]>(loadFromStorage('nexus_retailShops' + V, INITIAL_RETAIL_SHOPS));
+  const inventory = writable<InventoryItem[]>(loadFromStorage('nexus_inventory' + V, INITIAL_INVENTORY));
+  const orders = writable<Order[]>(loadFromStorage('nexus_orders' + V, INITIAL_ORDERS));
+  const connections = writable<Connection[]>(loadFromStorage('nexus_connections' + V, INITIAL_CONNECTIONS));
+  const equipments = writable<Equipment[]>(loadFromStorage('nexus_equipments' + V, INITIAL_EQUIPMENTS));
+  const bills = writable<Bill[]>(loadFromStorage('nexus_bills' + V, INITIAL_BILLS));
+  const feedbacks = writable<Feedback[]>(loadFromStorage('nexus_feedbacks' + V, INITIAL_FEEDBACKS));
+  const settings = writable<SystemSettings>(loadFromStorage('nexus_settings' + V, INITIAL_SETTINGS));
 
   // Auto-persist to localStorage on every change (mirrors React useEffect persistence)
-  plans.subscribe(persist('nexus_plans'));
-  employees.subscribe(persist('nexus_employees'));
-  vendors.subscribe(persist('nexus_vendors'));
-  retailShops.subscribe(persist('nexus_retailShops'));
-  inventory.subscribe(persist('nexus_inventory'));
-  orders.subscribe(persist('nexus_orders'));
-  connections.subscribe(persist('nexus_connections'));
-  equipments.subscribe(persist('nexus_equipments'));
-  bills.subscribe(persist('nexus_bills'));
-  settings.subscribe(persist('nexus_settings'));
+  plans.subscribe(persist('nexus_plans' + V));
+  employees.subscribe(persist('nexus_employees' + V));
+  vendors.subscribe(persist('nexus_vendors' + V));
+  retailShops.subscribe(persist('nexus_retailShops' + V));
+  inventory.subscribe(persist('nexus_inventory' + V));
+  orders.subscribe(persist('nexus_orders' + V));
+  connections.subscribe(persist('nexus_connections' + V));
+  equipments.subscribe(persist('nexus_equipments' + V));
+  bills.subscribe(persist('nexus_bills' + V));
+  feedbacks.subscribe(persist('nexus_feedbacks' + V));
+  settings.subscribe(persist('nexus_settings' + V));
 
   // ---- Plan Handlers ----
   const addPlan = (plan: Omit<Plan, 'id'>) => {
@@ -723,7 +936,21 @@ function createNexusStore() {
   };
 
   // ---- Order Handlers ----
-  const placeOrder = (orderData: Omit<Order, 'id' | 'createdAt' | 'status' | 'cableDistanceMeters' | 'dpBoxCapacity' | 'signalLossDbm'>): Order => {
+  type PlaceOrderInput = Omit<
+    Order,
+    | 'id'
+    | 'createdAt'
+    | 'status'
+    | 'cableDistanceMeters'
+    | 'dpBoxCapacity'
+    | 'signalLossDbm'
+    | 'bulkConnectionsCount'
+    | 'bulkDiscountPercent'
+    | 'landlineFeasible'
+    | 'internetFeasible'
+  > & { bulkConnectionsCount?: number };
+
+  const placeOrder = (orderData: PlaceOrderInput): Order => {
     const currentOrders = get(orders);
     const nextCount = currentOrders.length + 1;
     const newId = generateOrderId(orderData.connectionType, nextCount);
@@ -731,8 +958,12 @@ function createNexusStore() {
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+    const bulkConnectionsCount = Math.max(1, Math.floor(orderData.bulkConnectionsCount || 1));
+
     const newOrder: Order = {
       ...orderData,
+      bulkConnectionsCount,
+      bulkDiscountPercent: getBulkDiscountPercent(bulkConnectionsCount),
       id: newId,
       status: 'Pending',
       createdAt: `${dateStr} ${timeStr}`,
@@ -745,29 +976,69 @@ function createNexusStore() {
     return newOrder;
   };
 
+  // Account ID serial: 1 + number of IDs already issued anywhere.
+  const nextAccountIdSerial = (): number => {
+    const used = new Set<string>();
+    get(connections).forEach((c) => used.add(accountIdKey(c.accountId)));
+    get(orders).forEach((o) => o.assignedAccountId && used.add(accountIdKey(o.assignedAccountId)));
+    return used.size + 1;
+  };
+
+  const cityCodeForOrder = (ord: Order): string => {
+    const shop = get(retailShops).find((s) => s.shopCode === ord.retailOutletCode);
+    return shop?.cityCode ?? '999';
+  };
+
   const updateOrderStatus = (
     orderId: string,
     status: OrderStatus,
     feasibilityNotes?: string,
     cableDistanceMeters?: number,
     dpBoxCapacity?: string,
-    signalLossDbm?: number
-  ) => {
+    signalLossDbm?: number,
+    // Dial-Up: which of the two feasibility legs passed. Omit for non-Dial-Up.
+    feasibilityLegs?: { landline?: boolean; internet?: boolean }
+  ): Order | null => {
+    let updatedOrder: Order | null = null;
+
     orders.update((prev) =>
       prev.map((ord) => {
         if (ord.id === orderId) {
-          return {
+          // The 16-char Account ID is issued the moment technical confirms the
+          // line is feasible — it is the customer's only sign-in credential.
+          const assignedAccountId =
+            status === 'Feasible' && !ord.assignedAccountId
+              ? generateAccountId(ord.connectionType, cityCodeForOrder(ord), nextAccountIdSerial())
+              : ord.assignedAccountId;
+
+          // Dial-Up needs BOTH legs; if the customer already holds a Nexus
+          // landline, the landline leg is considered satisfied.
+          const landlineFeasible =
+            feasibilityLegs?.landline ??
+            (ord.existingLandlineAccountId ? true : ord.landlineFeasible);
+          const internetFeasible = feasibilityLegs?.internet ?? ord.internetFeasible;
+
+          updatedOrder = {
             ...ord,
             status,
+            ...(assignedAccountId !== undefined && { assignedAccountId }),
             ...(feasibilityNotes !== undefined && { feasibilityNotes }),
             ...(cableDistanceMeters !== undefined && { cableDistanceMeters }),
             ...(dpBoxCapacity !== undefined && { dpBoxCapacity }),
             ...(signalLossDbm !== undefined && { signalLossDbm }),
+            ...(ord.connectionType === 'Dial-Up' && { landlineFeasible, internetFeasible }),
+            ...(ord.connectionType !== 'Dial-Up' &&
+              status === 'Feasible' && { internetFeasible: true }),
+            ...(ord.connectionType !== 'Dial-Up' &&
+              status === 'Not Feasible' && { internetFeasible: false }),
           };
+          return updatedOrder;
         }
         return ord;
       })
     );
+
+    return updatedOrder;
   };
 
   // ---- Connection Provisioning ----
@@ -776,10 +1047,13 @@ function createNexusStore() {
     if (!order) return null;
 
     const plan = get(plans).find((p) => p.id === order.planId);
-    const monthlyRate = plan ? plan.monthlyRental : 49.99;
-    const deposit = plan ? plan.securityDeposit : 50.0;
+    const monthlyRate = plan ? plan.monthlyRental : 100;
+    const deposit = plan ? plan.securityDeposit : 250;
 
-    const newAccountId = generateAccountId();
+    // Keep the Account ID the customer already signs in with; only mint one if missing.
+    const newAccountId =
+      order.assignedAccountId ||
+      generateAccountId(order.connectionType, cityCodeForOrder(order), nextAccountIdSerial());
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -865,14 +1139,20 @@ function createNexusStore() {
     securityDeposit: number,
     monthlyRental: number,
     hourlyCharges: number,
-    billingMonth: string
+    billingMonth: string,
+    // Bulk / corporate scheme discount on (securityDeposit + monthlyRental).
+    discountPercent = 0
   ): Bill => {
-    const conn = get(connections).find((c) => c.accountId === accountId);
+    const conn = get(connections).find((c) => accountIdKey(c.accountId) === accountIdKey(accountId));
     const customerName = conn ? conn.customerName : 'Nexus Valued Subscriber';
     const planName = conn ? conn.planName : 'Telecommunications Plan';
     const connectionType = conn ? conn.connectionType : 'Broadband';
 
-    const subtotal = Number((securityDeposit + monthlyRental + hourlyCharges).toFixed(2));
+    const pct = Math.min(100, Math.max(0, discountPercent || 0));
+    const discountAmount = Number((((securityDeposit + monthlyRental) * pct) / 100).toFixed(2));
+    const subtotal = Number(
+      (securityDeposit + monthlyRental + hourlyCharges - discountAmount).toFixed(2)
+    );
     const taxRate = get(settings).serviceTaxRate; // 12.24%
     const serviceTaxAmount = Number(((subtotal * taxRate) / 100).toFixed(2));
     const totalAmount = Number((subtotal + serviceTaxAmount).toFixed(2));
@@ -895,6 +1175,8 @@ function createNexusStore() {
       securityDeposit,
       monthlyRental,
       hourlyCharges,
+      discountPercent: pct,
+      discountAmount,
       subtotal,
       serviceTaxRate: taxRate,
       serviceTaxAmount,
@@ -950,6 +1232,34 @@ function createNexusStore() {
     return updatedBill;
   };
 
+  // ---- Feedback Handlers (functional requirement #2) ----
+  const addFeedback = (fb: Omit<Feedback, 'id' | 'createdAt'>): Feedback => {
+    const now = new Date();
+    const created: Feedback = {
+      ...fb,
+      id: `fb-${Date.now()}`,
+      createdAt: `${now.toISOString().slice(0, 10)} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+    };
+    feedbacks.update((prev) => [created, ...prev]);
+    return created;
+  };
+
+  const respondFeedback = (id: string, response: string, respondedBy: string) => {
+    const now = new Date();
+    feedbacks.update((prev) =>
+      prev.map((f) =>
+        f.id === id
+          ? {
+              ...f,
+              response,
+              respondedBy,
+              respondedAt: `${now.toISOString().slice(0, 10)} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
+            }
+          : f
+      )
+    );
+  };
+
   // ---- Settings Handlers ----
   const updateSettings = (newSettings: Partial<SystemSettings>) => {
     settings.update((prev) => ({ ...prev, ...newSettings }));
@@ -968,6 +1278,7 @@ function createNexusStore() {
     connections,
     equipments,
     bills,
+    feedbacks,
     settings,
     addPlan,
     updatePlan,
@@ -989,6 +1300,8 @@ function createNexusStore() {
     updateEquipment,
     generateBill,
     recordPayment,
+    addFeedback,
+    respondFeedback,
     updateSettings,
   };
 }

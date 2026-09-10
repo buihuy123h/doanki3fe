@@ -27,8 +27,9 @@
     navigate(dashboardPathForRole($currentUser.role));
   };
 
-  const handleOpenRegister = (_planName?: string) => {
-    navigate('/register');
+  // Sends the customer to the purchase flow with the plan pre-selected.
+  const handleBuyPlan = (planId?: string) => {
+    navigate(planId ? `/register?plan=${planId}` : '/register');
   };
 
   const handleLogout = () => {
@@ -46,7 +47,7 @@
     $language === 'vi' ? `${price.toLocaleString('vi-VN')}₫/tháng` : `$${price.toFixed(2)}/mo`;
 </script>
 
-<div class="h-full w-full overflow-y-auto overflow-x-hidden bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] font-sans antialiased selection:bg-sky-500 selection:text-white transition-colors duration-300">
+<div class="h-full w-full overflow-y-scroll overflow-x-hidden bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] font-sans antialiased selection:bg-sky-500 selection:text-white transition-colors duration-300">
   <!-- 1. TOP NAVBAR -->
   <header class="sticky top-0 z-40 w-full backdrop-blur-md bg-white/85 dark:bg-[#152434]/85 border-b border-[#CCE4F7] dark:border-[#253D56] transition-colors duration-300">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
@@ -126,7 +127,7 @@
               {$t.common.login}
             </button>
             <button
-              onclick={() => handleOpenRegister()}
+              onclick={() => handleBuyPlan()}
               class="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 shadow-md shadow-sky-600/20 transition active:scale-95 flex items-center space-x-1"
             >
               <Sparkles class="h-3.5 w-3.5" />
@@ -173,7 +174,7 @@
           <ArrowRight class="h-4 w-4" />
         </a>
         <button
-          onclick={() => handleOpenRegister()}
+          onclick={() => handleBuyPlan()}
           class="w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold text-sm bg-white dark:bg-[#1E3349] hover:bg-sky-50 dark:hover:bg-[#253E58] text-[#1B2D40] dark:text-white border border-[#CCE4F7] dark:border-[#253D56] shadow-sm transition active:scale-95 flex items-center justify-center space-x-2"
         >
           <span>{$t.hero.registerFree}</span>
@@ -339,7 +340,9 @@
                 <span class="text-3xl font-black text-slate-900 dark:text-white tabular-nums">
                   ${plan.monthlyRental}
                 </span>
-                <span class="text-xs text-[#537292] dark:text-[#8DB0D4] font-medium">{$t.plans.perMonth}</span>
+                <span class="text-xs text-[#537292] dark:text-[#8DB0D4] font-medium">
+                  {plan.billingCycle ? `/ ${plan.billingCycle}${plan.validity ? ` (${plan.validity})` : ''}` : $t.plans.perMonth}
+                </span>
               </div>
 
               <!-- Highlights -->
@@ -362,13 +365,25 @@
                     <span><strong>{$t.plans.hourlyCharge}</strong> ${plan.hourlyCharge}/hr</span>
                   </div>
                 {/if}
+                {#if plan.includedHours}
+                  <div class="flex items-center space-x-2">
+                    <Clock class="h-4 w-4 text-amber-500 shrink-0" />
+                    <span><strong>{$language === 'vi' ? 'Số giờ:' : 'Included hours:'}</strong> {plan.includedHours}h</span>
+                  </div>
+                {/if}
+                {#if plan.callRates}
+                  <div class="flex items-start space-x-2">
+                    <Phone class="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+                    <span>{plan.callRates}</span>
+                  </div>
+                {/if}
               </div>
             </div>
 
             <!-- Subscribe CTA -->
             <div class="mt-6">
               <button
-                onclick={() => handleOpenRegister(plan.name)}
+                onclick={() => handleBuyPlan(plan.id)}
                 class="w-full py-2.5 rounded-xl font-bold text-xs transition active:scale-95 flex items-center justify-center space-x-1.5 {isHighlight
                   ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sm'
                   : 'bg-[#EDF6FF] dark:bg-[#1E3349] hover:bg-sky-100 dark:hover:bg-[#253E58] text-sky-800 dark:text-sky-200 border border-[#CCE4F7] dark:border-[#253D56]'}"
@@ -393,7 +408,7 @@
           <p class="text-sm text-[#537292] dark:text-[#8DB0D4] mt-1">{$t.hardware.subtitle}</p>
         </div>
         <button
-          onclick={() => handleOpenRegister('Hardware inquiry')}
+          onclick={() => handleBuyPlan()}
           class="inline-flex items-center space-x-1.5 text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline shrink-0"
         >
           <span>{$t.hardware.bulkQuote}</span>
@@ -428,7 +443,7 @@
                 <div class="font-bold text-base text-slate-900 dark:text-white">${item.unitCost}</div>
               </div>
               <button
-                onclick={() => handleOpenRegister(item.name)}
+                onclick={() => handleBuyPlan()}
                 class="px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white shadow-xs transition active:scale-95"
               >
                 {$t.hardware.orderBtn}

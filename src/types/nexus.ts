@@ -2,9 +2,29 @@
 
 export type RoleType = 'admin' | 'retail' | 'technical' | 'accounts' | 'user';
 
+// "Landline" is the spec's "only telephone connection" (Account/Order ID prefix = T).
 export type ConnectionType = 'Broadband' | 'Dial-Up' | 'Landline';
 
+// Order ID prefix per spec: D = Dial-Up, B = Broadband, T = Telephone-only (Landline).
+export const CONNECTION_TYPE_LETTER: Record<ConnectionType, 'D' | 'B' | 'T'> = {
+  'Dial-Up': 'D',
+  Broadband: 'B',
+  Landline: 'T',
+};
+
 export type OrderStatus = 'Pending' | 'Feasible' | 'Not Feasible' | 'Connection Provided';
+
+// Bulk / corporate scheme: discount on the advance (first rental) and the security
+// deposit, based on how many connections the order covers.
+//   10–15 => 25%   15–25 => 50%   25–50 => 75%   >50 => 100%
+export function getBulkDiscountPercent(connectionCount: number): number {
+  const n = Math.max(1, Math.floor(connectionCount || 1));
+  if (n > 50) return 100;
+  if (n >= 25) return 75;
+  if (n >= 15) return 50;
+  if (n >= 10) return 25;
+  return 0;
+}
 
 export type ConnectionStatus = 'Active' | 'Temporarily Inactive' | 'Permanently Inactive';
 
@@ -13,17 +33,28 @@ export type BillStatus = 'Paid' | 'Partially Paid' | 'Unpaid';
 export type EquipmentStatus = 'In Service' | 'In Stock' | 'Maintenance' | 'Faulty';
 
 // 1. Service Plans
+export type PlanBillingCycle =
+  | 'Hourly Pack'
+  | 'Monthly'
+  | 'Quarterly'
+  | 'Half-Yearly'
+  | 'Yearly';
+
 export interface Plan {
   id: string;
   name: string;
   type: ConnectionType;
-  speedOrBandwidth: string; // e.g., "100 Mbps", "56 Kbps V.92", "Unlimited Local"
-  monthlyRental: number; // e.g., 49.99
+  speedOrBandwidth: string; // e.g., "56 Kbps", "128 Kbps", "PSTN Voice"
+  monthlyRental: number; // headline charge for the plan's billing cycle / pack price
   hourlyCharge?: number; // for dial-up or metered
-  securityDeposit: number; // e.g., 50.00
-  dataLimit?: string; // e.g., "Unlimited" or "100 GB"
+  securityDeposit: number; // 500 Broadband / 325 Dial-Up / 250 Landline (spec)
+  dataLimit?: string; // e.g., "Unlimited" or "60 Hours"
   status: 'Active' | 'Archived';
   description: string;
+  billingCycle?: PlanBillingCycle; // spec pricing tables are per cycle
+  validity?: string; // e.g., "1 Month", "6 Months", "1 Year"
+  includedHours?: number; // hourly dial-up / broadband packs
+  callRates?: string; // landline call charges summary (per spec)
 }
 
 // 2. Employees (Admin Management)
@@ -60,6 +91,7 @@ export interface RetailShop {
   shopCode: string; // e.g., "SH-01"
   name: string;
   city: string;
+  cityCode: string; // 3-digit numeric code of the city, used inside the Account ID
   address: string;
   managerName: string;
   phone: string;
@@ -83,7 +115,7 @@ export interface InventoryItem {
 
 // 6. Orders (Retail & Technical Feasibility)
 export interface Order {
-  id: string; // 11-digit alphanumeric (e.g., "D0000000001", "B0000000002", "L0000000003")
+  id: string; // 11-char alphanumeric: prefix D/B/T + 10-digit serial (e.g. "D0000000001")
   customerName: string;
   customerPhone: string;
   customerEmail: string;
@@ -101,7 +133,17 @@ export interface Order {
   cableDistanceMeters?: number;
   dpBoxCapacity?: string;
   signalLossDbm?: number;
-  assignedAccountId?: string; // 16-digit Account ID generated on connection provided
+  assignedAccountId?: string; // 16-char Account ID issued once the line is Feasible
+
+  // Bulk / corporate scheme
+  bulkConnectionsCount: number; // connections covered by this order (>= 1)
+  bulkDiscountPercent: number; // derived from getBulkDiscountPercent()
+
+  // Dial-Up: feasibility is checked for BOTH the landline and the internet leg,
+  // unless the customer already holds a Nexus landline (then internet only).
+  existingLandlineAccountId?: string;
+  landlineFeasible?: boolean;
+  internetFeasible?: boolean;
 }
 
 // 7. Customer Connections (Technical & Retail)
@@ -171,7 +213,9 @@ export interface Bill {
   securityDeposit: number;
   monthlyRental: number;
   hourlyCharges: number;
-  subtotal: number; // securityDeposit + monthlyRental + hourlyCharges
+  discountPercent: number; // bulk / corporate scheme discount
+  discountAmount: number; // applied to (securityDeposit + monthlyRental)
+  subtotal: number; // securityDeposit + monthlyRental + hourlyCharges - discountAmount
   serviceTaxRate: number; // 12.24%
   serviceTaxAmount: number; // subtotal * 12.24%
   totalAmount: number; // subtotal + serviceTaxAmount
@@ -183,7 +227,29 @@ export interface Bill {
   paymentHistory: PaymentRecord[];
 }
 
-// 10. Charge & System Settings
+// 10. Customer Feedback (collected per functional requirement #2)
+export type FeedbackCategory =
+  | 'Service Quality'
+  | 'Installation'
+  | 'Billing'
+  | 'Support'
+  | 'Other';
+
+export interface Feedback {
+  id: string;
+  accountId?: string; // 16-char Account ID, if the connection is live
+  orderId?: string;
+  customerName: string;
+  rating: number; // 1..5
+  category: FeedbackCategory;
+  message: string;
+  createdAt: string;
+  response?: string; // reply from the admin / retail outlet
+  respondedBy?: string;
+  respondedAt?: string;
+}
+
+// 11. Charge & System Settings
 export interface SystemSettings {
   serviceTaxRate: number; // default 12.24
   latePaymentFeePercent: number; // e.g. 5%

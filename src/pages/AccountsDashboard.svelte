@@ -3,27 +3,48 @@
   import { nexusStore } from '../context/NexusContext';
   import { languageStore } from '../context/LanguageContext';
   import DashboardLayout from '../components/layout/DashboardLayout.svelte';
+  import SettingsView from '../components/common/SettingsView.svelte';
+  import ProfileView from '../components/common/ProfileView.svelte';
   import type { NavItem } from '../components/layout/DashboardLayout.svelte';
   import {
     Receipt, CreditCard, Settings, Search, CheckCircle2, Printer, X, Building, Plus,
   } from 'lucide-svelte';
   import type { Bill, PaymentRecord } from '../types/nexus';
   import { toast } from 'svelte-sonner';
+  import { queryParam, activeTabOverride } from '../lib/router';
 
-  type AccountsTab = 'bill-generation' | 'payment-updates' | 'charge-settings' | 'settings';
+  type AccountsTab = 'bill-generation' | 'payment-updates' | 'charge-settings' | 'settings' | 'profile';
 
-  const { connections, bills, generateBill, recordPayment, settings, updateSettings } = nexusStore;
-  const { t } = languageStore;
+  const { connections, orders, bills, generateBill, recordPayment, settings, updateSettings } = nexusStore;
+  const { t, language } = languageStore;
 
   // Active navigation tab
   let activeTab = $state<AccountsTab>('bill-generation');
 
+  // Reactively respond to tab overrides from router / notifications
+  $effect(() => {
+    const override = $activeTabOverride;
+    const validTabs: AccountsTab[] = ['bill-generation', 'payment-updates', 'charge-settings', 'settings', 'profile'];
+    if (override && override.path === '/accounts') {
+      if (validTabs.includes(override.tab as AccountsTab)) {
+        activeTab = override.tab as AccountsTab;
+      }
+    } else {
+      const qTab = queryParam('tab');
+      if (qTab && validTabs.includes(qTab as AccountsTab)) {
+        activeTab = qTab as AccountsTab;
+      }
+    }
+  });
+
   // STATE: BILL GENERATION FORM
-  let billAccountId = $state('8820-4102-9931-1001');
+  let billAccountId = $state('T064-000000000001');
   let billingMonth = $state('September 2026');
-  let customSecurityDeposit = $state(30.0);
-  let customMonthlyRental = $state(19.99);
+  let customSecurityDeposit = $state(250);
+  let customMonthlyRental = $state(125);
   let customHourlyCharges = $state(0.0);
+  let discountPercent = $state(25); // bulk / corporate scheme discount
+  let discountTouched = $state(false);
 
   // Selected Connection matching the Account ID
   const matchedConnection = $derived(
@@ -32,24 +53,46 @@
     )
   );
 
+  // The order behind this connection carries the bulk scheme discount.
+  const matchedOrder = $derived(
+    matchedConnection
+      ? $orders.find((o) => o.id === matchedConnection.orderId) ??
+          $orders.find((o) => o.assignedAccountId === matchedConnection.accountId)
+      : undefined
+  );
+
+  // Keep the discount in sync with the order's scheme unless the accountant overrode it.
+  $effect(() => {
+    if (!discountTouched) discountPercent = matchedOrder?.bulkDiscountPercent ?? 0;
+  });
+
   // When connection changes, auto-load its plan rates
   const handleSelectConnectionForBilling = (accountId: string) => {
     billAccountId = accountId;
+    discountTouched = false;
     const conn = $connections.find((c) => c.accountId === accountId);
     if (conn) {
-      customSecurityDeposit = conn.securityDeposit || 50.0;
-      customMonthlyRental = conn.monthlyRental || 49.99;
+      customSecurityDeposit = conn.securityDeposit || 250;
+      customMonthlyRental = conn.monthlyRental || 100;
       customHourlyCharges = 0.0;
-      toast.info(`Loaded subscriber parameters for ${conn.customerName}`);
+      toast.info($language === 'vi' ? `Đã tải thông số thuê bao cho ${conn.customerName}` : `Loaded subscriber parameters for ${conn.customerName}`);
     }
   };
 
   // FINANCIAL CALCULATION ENGINE:
-  // Subtotal = Security Deposit + Monthly Rental + Hourly Charges
+  // Discount   = (Security Deposit + Monthly Rental) * discountPercent%
+  // Subtotal   = Security Deposit + Monthly Rental + Hourly Charges - Discount
   // Service Tax = Subtotal * (serviceTaxRate / 100) [Default: 12.24%]
   // Grand Total = Subtotal + Service Tax
+  const discountAmount = $derived(
+    Number(
+      (((customSecurityDeposit || 0) + (customMonthlyRental || 0)) * (discountPercent || 0) / 100).toFixed(2)
+    )
+  );
   const subtotal = $derived(
-    Number(((customSecurityDeposit || 0) + (customMonthlyRental || 0) + (customHourlyCharges || 0)).toFixed(2))
+    Number(
+      ((customSecurityDeposit || 0) + (customMonthlyRental || 0) + (customHourlyCharges || 0) - discountAmount).toFixed(2)
+    )
   );
   const serviceTaxAmount = $derived(Number(((subtotal * $settings.serviceTaxRate) / 100).toFixed(2)));
   const grandTotal = $derived(Number((subtotal + serviceTaxAmount).toFixed(2)));
@@ -88,7 +131,7 @@
     e.preventDefault();
 
     if (!billAccountId.trim()) {
-      toast.error('Please input a valid 16-digit Account ID.');
+      toast.error($language === 'vi' ? 'Vui lòng nhập mã tài khoản 16 ký tự hợp lệ.' : 'Please input a valid 16-character Account ID.');
       return;
     }
 
@@ -97,11 +140,12 @@
       customSecurityDeposit,
       customMonthlyRental,
       customHourlyCharges,
-      billingMonth
+      billingMonth,
+      discountPercent || 0
     );
 
     generatedInvoiceModal = createdBill;
-    toast.success(`Invoice ${createdBill.invoiceNumber} successfully generated!`);
+    toast.success($language === 'vi' ? `Hóa đơn ${createdBill.invoiceNumber} đã phát hành thành công!` : `Invoice ${createdBill.invoiceNumber} successfully generated!`);
   };
 
   // FORM SUBMISSION LOGIC: UPDATE PAYMENT STATUS
@@ -109,12 +153,12 @@
     e.preventDefault();
 
     if (!activeBillToPay) {
-      toast.error('No invoice selected.');
+      toast.error($language === 'vi' ? 'Chưa chọn hóa đơn nào.' : 'No invoice selected.');
       return;
     }
 
     if (paymentAmountInput <= 0) {
-      toast.error('Payment amount must be greater than zero.');
+      toast.error($language === 'vi' ? 'Số tiền thanh toán phải lớn hơn 0.' : 'Payment amount must be greater than zero.');
       return;
     }
 
@@ -130,7 +174,9 @@
 
     if (updated) {
       toast.success(
-        `Payment of $${paymentAmountInput.toFixed(2)} recorded for ${updated.invoiceNumber}. Remaining Due: $${updated.dueAmount.toFixed(2)}`
+        $language === 'vi'
+          ? `Đã ghi nhận thanh toán $${paymentAmountInput.toFixed(2)} cho ${updated.invoiceNumber}. Công nợ còn lại: $${updated.dueAmount.toFixed(2)}`
+          : `Payment of $${paymentAmountInput.toFixed(2)} recorded for ${updated.invoiceNumber}. Remaining Due: $${updated.dueAmount.toFixed(2)}`
       );
       paymentAmountInput = 0;
       paymentRefNumber = '';
@@ -149,7 +195,7 @@
         Landline: landlineDeposit,
       },
     });
-    toast.success('Financial charge settings & tax rates updated successfully.');
+    toast.success($language === 'vi' ? 'Đã cập nhật cấu hình biểu cước & thuế suất.' : 'Financial charge settings & tax rates updated successfully.');
   };
 
   const accountsNavItems: NavItem[] = $derived([
@@ -199,7 +245,7 @@
           <!-- Account ID Input Section -->
           <div>
             <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 dark:text-slate-300 mb-1.5">
-              16-Digit Subscriber Account ID *
+              {$language === 'vi' ? 'Mã tài khoản thuê bao 16 ký tự *' : '16-character Subscriber Account ID *'}
             </label>
             <div class="flex gap-2">
               <div class="relative flex-1">
@@ -207,7 +253,7 @@
                 <input
                   type="text"
                   required
-                  placeholder="XXXX-XXXX-XXXX-XXXX"
+                  placeholder="T064-000000000001"
                   bind:value={billAccountId}
                   class="w-full pl-9 pr-4 py-2.5 text-base font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 tracking-widest text-slate-900 dark:text-white"
                 />
@@ -217,13 +263,13 @@
                 onclick={() => handleSelectConnectionForBilling(billAccountId)}
                 class="px-4 py-2.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 transition"
               >
-                Fetch Parameters
+                {$language === 'vi' ? 'Tải thông số' : 'Fetch Parameters'}
               </button>
             </div>
 
             <!-- Quick Account Selection -->
             <div class="flex flex-wrap items-center gap-2 pt-2 text-xs text-slate-500">
-              <span>Quick Select Account:</span>
+              <span>{$language === 'vi' ? 'Chọn nhanh tài khoản:' : 'Quick Select Account:'}</span>
               {#each $connections as c (c.accountId)}
                 <button
                   type="button"
@@ -240,57 +286,69 @@
           {#if matchedConnection}
             <div class="p-4 rounded-xl bg-blue-50/50 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
               <div>
-                <span class="text-slate-500 block">Subscriber Name:</span>
+                <span class="text-slate-500 block">{$language === 'vi' ? 'Tên thuê bao:' : 'Subscriber Name:'}</span>
                 <strong class="text-slate-900 dark:text-white text-sm">{matchedConnection.customerName}</strong>
               </div>
               <div>
-                <span class="text-slate-500 block">Connection & Plan:</span>
+                <span class="text-slate-500 block">{$language === 'vi' ? 'Gói cước & Kết nối:' : 'Connection & Plan:'}</span>
                 <strong class="text-slate-900 dark:text-white">{matchedConnection.planName} ({matchedConnection.connectionType})</strong>
               </div>
               <div>
-                <span class="text-slate-500 block">Installation Address:</span>
+                <span class="text-slate-500 block">{$language === 'vi' ? 'Địa chỉ lắp đặt:' : 'Installation Address:'}</span>
                 <span class="text-slate-600 dark:text-slate-300 truncate block">{matchedConnection.installationAddress}</span>
               </div>
             </div>
           {:else}
             <div class="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 text-xs text-amber-700 dark:text-amber-300">
-              Account ID not currently bound in memory. You may still input manual billing figures below.
+              {$language === 'vi'
+                ? 'Mã tài khoản hiện chưa có trong bộ nhớ. Bạn vẫn có thể nhập các số liệu thanh toán thủ công bên dưới.'
+                : 'Account ID not currently bound in memory. You may still input manual billing figures below.'}
             </div>
           {/if}
 
           <!-- Billing Period Selector -->
           <div>
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Billing Period / Cycle</label>
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              {$language === 'vi' ? 'Kỳ tính cước / Chu kỳ' : 'Billing Period / Cycle'}
+            </label>
             <select
               bind:value={billingMonth}
               class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg"
             >
-              <option value="September 2026">September 2026 (Current Cycle)</option>
-              <option value="August 2026">August 2026</option>
-              <option value="July 2026">July 2026</option>
+              <option value="September 2026">
+                {$language === 'vi' ? 'Tháng 9/2026 (Kỳ hiện tại)' : 'September 2026 (Current Cycle)'}
+              </option>
+              <option value="August 2026">{$language === 'vi' ? 'Tháng 8/2026' : 'August 2026'}</option>
+              <option value="July 2026">{$language === 'vi' ? 'Tháng 7/2026' : 'July 2026'}</option>
             </select>
           </div>
 
           <!-- ITEMIZED LINE ITEMS CALCULATION -->
           <div class="space-y-4 border-t border-slate-100 dark:border-slate-800 pt-4">
             <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Itemized Charges & Tax Breakdown Table
+              {$language === 'vi' ? 'Bảng chi tiết các khoản phí & Thuế dịch vụ' : 'Itemized Charges & Tax Breakdown Table'}
             </h3>
 
             <div class="rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden text-sm">
               <table class="w-full text-left">
                 <thead class="bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold text-slate-500 uppercase border-b border-slate-200 dark:border-slate-800">
                   <tr>
-                    <th class="px-4 py-2.5">Line Item Description</th>
-                    <th class="px-4 py-2.5 text-right w-44">Charge Amount ($)</th>
+                    <th class="px-4 py-2.5">{$language === 'vi' ? 'Nội dung khoản thu' : 'Line Item Description'}</th>
+                    <th class="px-4 py-2.5 text-right w-44">{$language === 'vi' ? 'Số tiền ($)' : 'Charge Amount ($)'}</th>
                   </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
                   <!-- Line Item 1: Security Deposit -->
                   <tr>
                     <td class="px-4 py-3">
-                      <div class="font-semibold text-slate-900 dark:text-white">Security Deposit (Refundable)</div>
-                      <div class="text-slate-500">Required refundable deposit for telecom equipment & circuit bond</div>
+                      <div class="font-semibold text-slate-900 dark:text-white">
+                        {$language === 'vi' ? 'Tiền đặt cọc thiết bị (Hoàn lại)' : 'Security Deposit (Refundable)'}
+                      </div>
+                      <div class="text-slate-500">
+                        {$language === 'vi'
+                          ? 'Tiền cọc thiết bị viễn thông và bảo đảm đường truyền (hoàn lại khi chấm dứt)'
+                          : 'Required refundable deposit for telecom equipment & circuit bond'}
+                      </div>
                     </td>
                     <td class="px-4 py-3 text-right">
                       <input
@@ -306,8 +364,14 @@
                   <!-- Line Item 2: Monthly Rentals -->
                   <tr>
                     <td class="px-4 py-3">
-                      <div class="font-semibold text-slate-900 dark:text-white">Monthly Plan Rental Charge</div>
-                      <div class="text-slate-500">Recurring monthly subscriber fee for unlimited/bandwidth tier</div>
+                      <div class="font-semibold text-slate-900 dark:text-white">
+                        {$language === 'vi' ? 'Cước thuê bao gói dịch vụ hàng tháng' : 'Monthly Plan Rental Charge'}
+                      </div>
+                      <div class="text-slate-500">
+                        {$language === 'vi'
+                          ? 'Phí dịch vụ định kỳ hàng tháng cho gói tốc độ/băng thông'
+                          : 'Recurring monthly subscriber fee for unlimited/bandwidth tier'}
+                      </div>
                     </td>
                     <td class="px-4 py-3 text-right">
                       <input
@@ -323,8 +387,14 @@
                   <!-- Line Item 3: Hourly / Metered Charges -->
                   <tr>
                     <td class="px-4 py-3">
-                      <div class="font-semibold text-slate-900 dark:text-white">Hourly / Usage Metered Charges</div>
-                      <div class="text-slate-500">Metered dial-up access time or international voice talk minutes</div>
+                      <div class="font-semibold text-slate-900 dark:text-white">
+                        {$language === 'vi' ? 'Cước đo theo giờ / Lưu lượng sử dụng' : 'Hourly / Usage Metered Charges'}
+                      </div>
+                      <div class="text-slate-500">
+                        {$language === 'vi'
+                          ? 'Thời gian truy cập quay số hoặc phút gọi thoại quốc tế'
+                          : 'Metered dial-up access time or international voice talk minutes'}
+                      </div>
                     </td>
                     <td class="px-4 py-3 text-right">
                       <input
@@ -337,9 +407,35 @@
                     </td>
                   </tr>
 
+                  <!-- Line Item 3b: Bulk / corporate scheme discount -->
+                  <tr class="bg-emerald-50/50 dark:bg-emerald-950/30">
+                    <td class="px-4 py-3">
+                      <div class="font-semibold text-emerald-700 dark:text-emerald-300">
+                        {$language === 'vi' ? 'Chiết khấu gói Doanh nghiệp / Số lượng lớn' : 'Bulk / Corporate Scheme Discount'}
+                        {#if matchedOrder}
+                          <span class="text-[10px] text-slate-500">
+                            ({matchedOrder.bulkConnectionsCount} {$language === 'vi' ? 'kết nối' : 'connections'})
+                          </span>
+                        {/if}
+                      </div>
+                      <div class="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5 flex items-center gap-1.5">
+                        <input
+                          type="number" step="1" min="0" max="100"
+                          value={discountPercent}
+                          oninput={(e) => { discountPercent = parseFloat((e.currentTarget as HTMLInputElement).value) || 0; discountTouched = true; }}
+                          class="w-16 px-2 py-1 text-right font-mono bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded"
+                        />
+                        <span>{$language === 'vi' ? '% của (tiền cọc + cước thuê)' : '% of (deposit + rental)'}</span>
+                      </div>
+                    </td>
+                    <td class="px-4 py-3 text-right font-mono tabular-nums font-bold text-sm text-emerald-700 dark:text-emerald-400">−${discountAmount.toFixed(2)}</td>
+                  </tr>
+
                   <!-- Line Item 4: Subtotal -->
                   <tr class="bg-slate-50/70 dark:bg-slate-950 font-semibold">
-                    <td class="px-4 py-2.5 text-slate-700 dark:text-slate-300">Subtotal (Taxable Base)</td>
+                    <td class="px-4 py-2.5 text-slate-700 dark:text-slate-300">
+                      {$language === 'vi' ? 'Tổng phụ (Cơ sở tính thuế)' : 'Subtotal (Taxable Base)'}
+                    </td>
                     <td class="px-4 py-2.5 text-right font-mono tabular-nums text-sm text-slate-900 dark:text-white">${subtotal.toFixed(2)}</td>
                   </tr>
 
@@ -347,11 +443,17 @@
                   <tr class="bg-blue-50/50 dark:bg-blue-950/40">
                     <td class="px-4 py-3">
                       <div class="flex items-center space-x-2">
-                        <span class="font-bold text-blue-700 dark:text-blue-300">Service Tax ({$settings.serviceTaxRate}%)</span>
-                        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-600 text-white font-semibold uppercase">Automated Statutory</span>
+                        <span class="font-bold text-blue-700 dark:text-blue-300">
+                          {$language === 'vi' ? `Thuế dịch vụ (${$settings.serviceTaxRate}%)` : `Service Tax (${$settings.serviceTaxRate}%)`}
+                        </span>
+                        <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-blue-600 text-white font-semibold uppercase">
+                          {$language === 'vi' ? 'Quy định tự động' : 'Automated Statutory'}
+                        </span>
                       </div>
                       <div class="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5">
-                        Automated computation: ${subtotal.toFixed(2)} × {$settings.serviceTaxRate}%
+                        {$language === 'vi'
+                          ? `Tính tự động: $${subtotal.toFixed(2)} × ${$settings.serviceTaxRate}%`
+                          : `Automated computation: $${subtotal.toFixed(2)} × ${$settings.serviceTaxRate}%`}
                       </div>
                     </td>
                     <td class="px-4 py-3 text-right font-mono tabular-nums font-bold text-sm text-blue-700 dark:text-blue-400">+${serviceTaxAmount.toFixed(2)}</td>
@@ -359,7 +461,9 @@
 
                   <!-- Grand Total Row -->
                   <tr class="bg-slate-900 text-white font-bold text-sm">
-                    <td class="px-4 py-3 uppercase tracking-wider text-xs">Grand Total Net Payable ($)</td>
+                    <td class="px-4 py-3 uppercase tracking-wider text-xs">
+                      {$language === 'vi' ? 'Tổng cộng thực thanh toán ($)' : 'Grand Total Net Payable ($)'}
+                    </td>
                     <td class="px-4 py-3 text-right font-mono text-base tabular-nums text-emerald-400">${grandTotal.toFixed(2)}</td>
                   </tr>
                 </tbody>
@@ -374,7 +478,7 @@
               class="px-6 py-2.5 rounded-lg text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition shadow-md flex items-center space-x-2"
             >
               <Receipt class="h-4 w-4" />
-              <span>Generate Customer Bill</span>
+              <span>{$language === 'vi' ? 'Lập hóa đơn khách hàng' : 'Generate Customer Bill'}</span>
             </button>
           </div>
         </form>
@@ -384,26 +488,26 @@
           <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
             <h3 class="font-semibold text-sm uppercase tracking-wider text-slate-900 dark:text-white flex items-center space-x-2">
               <Building class="h-4 w-4 text-blue-500" />
-              <span>Statutory Tax Compliance</span>
+              <span>{$language === 'vi' ? 'Tuân thủ thuế quy định' : 'Statutory Tax Compliance'}</span>
             </h3>
 
             <p class="text-xs text-slate-500 leading-relaxed">
-              Under telecom marketing system regulations, all issued subscriptions apply a statutory
-              <strong> {$settings.serviceTaxRate}% Service Tax</strong> across equipment deposit and rental
-              line items.
+              {$language === 'vi'
+                ? `Theo quy định hệ thống dịch vụ viễn thông, mọi thuê bao phát hành đều áp dụng thuế suất dịch vụ bắt buộc ${$settings.serviceTaxRate}% trên tiền đặt cọc và cước thuê thiết bị.`
+                : `Under telecom marketing system regulations, all issued subscriptions apply a statutory ${$settings.serviceTaxRate}% Service Tax across equipment deposit and rental line items.`}
             </p>
 
             <div class="p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2 text-xs font-mono">
               <div class="flex justify-between">
-                <span class="text-slate-500">Tax Category:</span>
-                <span class="text-slate-900 dark:text-white">Telecommunication Services</span>
+                <span class="text-slate-500">{$language === 'vi' ? 'Danh mục thuế:' : 'Tax Category:'}</span>
+                <span class="text-slate-900 dark:text-white">{$language === 'vi' ? 'Dịch vụ viễn thông' : 'Telecommunication Services'}</span>
               </div>
               <div class="flex justify-between">
-                <span class="text-slate-500">Tax Identifier:</span>
+                <span class="text-slate-500">{$language === 'vi' ? 'Mã số thuế:' : 'Tax Identifier:'}</span>
                 <span class="text-slate-900 dark:text-white">ST-NEX-FED-1224</span>
               </div>
               <div class="flex justify-between">
-                <span class="text-slate-500">Service Tax Rate:</span>
+                <span class="text-slate-500">{$language === 'vi' ? 'Thuế suất dịch vụ:' : 'Service Tax Rate:'}</span>
                 <span class="text-blue-600 font-bold">{$settings.serviceTaxRate}%</span>
               </div>
             </div>
@@ -412,12 +516,14 @@
           <!-- Recent Bills Created -->
           <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-3">
             <div class="flex items-center justify-between">
-              <h3 class="font-semibold text-xs uppercase tracking-wider text-slate-500">Recent Generated Invoices</h3>
+              <h3 class="font-semibold text-xs uppercase tracking-wider text-slate-500">
+                {$language === 'vi' ? 'Hóa đơn vừa phát hành' : 'Recent Generated Invoices'}
+              </h3>
               <button
                 onclick={() => (activeTab = 'payment-updates')}
                 class="text-xs text-blue-600 hover:underline"
               >
-                Payments →
+                {$language === 'vi' ? 'Thu tiền →' : 'Payments →'}
               </button>
             </div>
 
@@ -433,7 +539,7 @@
                     <span class="text-[10px] px-1.5 py-0.5 rounded font-semibold {b.status === 'Paid'
                       ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
                       : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'}">
-                      {b.status}
+                      {$language === 'vi' ? (b.status === 'Paid' ? 'Đã thanh toán' : 'Chờ thanh toán') : b.status}
                     </span>
                   </div>
                 </div>
@@ -443,7 +549,6 @@
         </div>
       </div>
     {/if}
-
     <!-- TAB 2: PAYMENT UPDATES -->
     {#if activeTab === 'payment-updates'}
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -453,16 +558,20 @@
           class="lg:col-span-2 space-y-6 bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm"
         >
           <div>
-            <h3 class="text-base font-bold text-slate-900 dark:text-white">Update Payment Status & Reconcile Balance</h3>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white">
+              {$language === 'vi' ? 'Cập nhật trạng thái thanh toán & Đối soát số dư' : 'Update Payment Status & Reconcile Balance'}
+            </h3>
             <p class="text-xs text-slate-500 mt-0.5">
-              Record collected cash, cheque, or electronic payments against outstanding bills.
+              {$language === 'vi'
+                ? 'Ghi nhận tiền mặt, séc hoặc thanh toán điện tử đã thu vào hóa đơn công nợ.'
+                : 'Record collected cash, cheque, or electronic payments against outstanding bills.'}
             </p>
           </div>
 
           <!-- Select Invoice to Update -->
           <div>
             <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Select Generated Invoice to Settle *
+              {$language === 'vi' ? 'Chọn hóa đơn cần thanh toán *' : 'Select Generated Invoice to Settle *'}
             </label>
             <select
               bind:value={selectedInvoiceNumber}
@@ -470,7 +579,7 @@
             >
               {#each $bills as b (b.id)}
                 <option value={b.invoiceNumber}>
-                  {b.invoiceNumber} — {b.customerName} (Total: ${b.totalAmount.toFixed(2)}, Due: ${b.dueAmount.toFixed(2)}) [{b.status}]
+                  {b.invoiceNumber} — {b.customerName} ({$language === 'vi' ? 'Tổng:' : 'Total:'} ${b.totalAmount.toFixed(2)}, {$language === 'vi' ? 'Còn nợ:' : 'Due:'} ${b.dueAmount.toFixed(2)}) [{$language === 'vi' ? (b.status === 'Paid' ? 'Đã thanh toán' : 'Chờ thanh toán') : b.status}]
                 </option>
               {/each}
             </select>
@@ -481,19 +590,19 @@
             <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-3">
               <div class="flex flex-col sm:flex-row justify-between border-b border-slate-200 dark:border-slate-800 pb-2 text-xs">
                 <div>
-                  <span class="text-slate-500">Customer: </span>
+                  <span class="text-slate-500">{$language === 'vi' ? 'Khách hàng:' : 'Customer:'} </span>
                   <strong class="text-slate-900 dark:text-white">{activeBillToPay.customerName}</strong>
                 </div>
                 <div>
-                  <span class="text-slate-500">Account ID: </span>
+                  <span class="text-slate-500">{$language === 'vi' ? 'Mã tài khoản:' : 'Account ID:'} </span>
                   <span class="font-mono text-blue-600 dark:text-blue-400 font-bold">{activeBillToPay.accountId}</span>
                 </div>
                 <div>
-                  <span class="text-slate-500">Status: </span>
+                  <span class="text-slate-500">{$language === 'vi' ? 'Trạng thái:' : 'Status:'} </span>
                   <span class="font-semibold px-2 py-0.5 rounded text-[11px] {activeBillToPay.status === 'Paid'
-                    ? 'bg-emerald-100 text-emerald-700'
-                    : 'bg-rose-100 text-rose-700'}">
-                    {activeBillToPay.status}
+                    ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                    : 'bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'}">
+                    {$language === 'vi' ? (activeBillToPay.status === 'Paid' ? 'Đã thanh toán' : 'Chờ thanh toán') : activeBillToPay.status}
                   </span>
                 </div>
               </div>
@@ -501,17 +610,17 @@
               <!-- 3 Metric Cards for Amount Paid & Due Amount -->
               <div class="grid grid-cols-3 gap-3 text-center">
                 <div class="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <div class="text-[11px] text-slate-500 uppercase">Total Bill</div>
+                  <div class="text-[11px] text-slate-500 uppercase">{$language === 'vi' ? 'Tổng hóa đơn' : 'Total Bill'}</div>
                   <div class="text-base font-bold font-mono tabular-nums text-slate-900 dark:text-white mt-0.5">${activeBillToPay.totalAmount.toFixed(2)}</div>
                 </div>
 
                 <div class="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <div class="text-[11px] text-slate-500 uppercase">Currently Paid</div>
+                  <div class="text-[11px] text-slate-500 uppercase">{$language === 'vi' ? 'Đã thanh toán' : 'Currently Paid'}</div>
                   <div class="text-base font-bold font-mono tabular-nums text-emerald-600 dark:text-emerald-400 mt-0.5">${activeBillToPay.amountPaid.toFixed(2)}</div>
                 </div>
 
                 <div class="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <div class="text-[11px] text-slate-500 uppercase">Current Due</div>
+                  <div class="text-[11px] text-slate-500 uppercase">{$language === 'vi' ? 'Công nợ còn lại' : 'Current Due'}</div>
                   <div class="text-base font-bold font-mono tabular-nums text-rose-600 dark:text-rose-400 mt-0.5">${activeBillToPay.dueAmount.toFixed(2)}</div>
                 </div>
               </div>
@@ -524,7 +633,7 @@
               <!-- Amount Paid Field -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  New Payment Amount ($) *
+                  {$language === 'vi' ? 'Số tiền thanh toán mới ($) *' : 'New Payment Amount ($) *'}
                 </label>
                 <input
                   type="number"
@@ -542,7 +651,7 @@
                     onclick={() => (paymentAmountInput = activeBillToPay?.dueAmount || 0)}
                     class="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-medium"
                   >
-                    Pay Full Due (${(activeBillToPay?.dueAmount ?? 0).toFixed(2)})
+                    {$language === 'vi' ? `Thanh toán hết nợ ($${(activeBillToPay?.dueAmount ?? 0).toFixed(2)})` : `Pay Full Due ($${(activeBillToPay?.dueAmount ?? 0).toFixed(2)})`}
                   </button>
                 </div>
               </div>
@@ -550,37 +659,41 @@
               <!-- Projected Remaining Due Amount -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Calculated Remaining Due Amount ($)
+                  {$language === 'vi' ? 'Dự tính nợ còn lại ($)' : 'Calculated Remaining Due Amount ($)'}
                 </label>
                 <div class="w-full px-3 py-2 text-base font-mono tabular-nums font-bold bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-rose-600 dark:text-rose-400">
                   ${projectedDueAmount.toFixed(2)}
                 </div>
                 <span class="text-[10px] text-slate-400 block mt-1">
-                  Formula: Total Bill - (Prior Paid + New Payment)
+                  {$language === 'vi' ? 'Công thức: Tổng bill - (Đã trả trước + Khoản trả mới)' : 'Formula: Total Bill - (Prior Paid + New Payment)'}
                 </span>
               </div>
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Payment Mode</label>
+                <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  {$language === 'vi' ? 'Hình thức thanh toán' : 'Payment Mode'}
+                </label>
                 <select
                   bind:value={paymentMode}
-                  class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg"
+                  class="w-full px-3 py-2 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
                 >
-                  <option value="Credit/Debit Card">Credit/Debit Card (POS)</option>
-                  <option value="Cash">Cash (Counter Tender)</option>
-                  <option value="Cheque">Cheque / Demand Draft</option>
-                  <option value="Bank Transfer/NEFT">Bank Transfer / NEFT / ACH</option>
-                  <option value="UPI/Digital Wallet">UPI / Digital Wallet</option>
+                  <option value="Credit/Debit Card">{$language === 'vi' ? 'Thẻ tín dụng / Ghi nợ (POS)' : 'Credit/Debit Card (POS)'}</option>
+                  <option value="Cash">{$language === 'vi' ? 'Tiền mặt (Tại quầy)' : 'Cash (Counter Tender)'}</option>
+                  <option value="Cheque">{$language === 'vi' ? 'Séc ngân hàng' : 'Cheque / Demand Draft'}</option>
+                  <option value="Bank Transfer/NEFT">{$language === 'vi' ? 'Chuyển khoản / NEFT / ACH' : 'Bank Transfer / NEFT / ACH'}</option>
+                  <option value="UPI/Digital Wallet">{$language === 'vi' ? 'Ví điện tử / UPI' : 'UPI / Digital Wallet'}</option>
                 </select>
               </div>
 
               <div>
-                <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Transaction / Cheque Ref #</label>
+                <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  {$language === 'vi' ? 'Mã tham chiếu GD / Số séc' : 'Transaction / Cheque Ref #'}
+                </label>
                 <input
                   type="text"
-                  placeholder="e.g. CHQ-991204 or TXN-VISA-8821"
+                  placeholder={$language === 'vi' ? 'VD: CHQ-991204 hoặc TXN-VISA-8821' : 'e.g. CHQ-991204 or TXN-VISA-8821'}
                   bind:value={paymentRefNumber}
                   class="w-full px-3 py-2 text-sm font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-white"
                 />
@@ -589,7 +702,7 @@
 
             <div>
               <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Recording Cashier / Accountant Name
+                {$language === 'vi' ? 'Thu ngân / Kế toán phụ trách' : 'Recording Cashier / Accountant Name'}
               </label>
               <input
                 type="text"
@@ -607,7 +720,7 @@
               class="px-6 py-2.5 rounded-lg text-sm font-bold bg-blue-600 hover:bg-blue-700 text-white transition shadow-md flex items-center space-x-2"
             >
               <CheckCircle2 class="h-4 w-4" />
-              <span>Update Payment & Close Balance</span>
+              <span>{$language === 'vi' ? 'Cập nhật thanh toán & Đóng công nợ' : 'Update Payment & Close Balance'}</span>
             </button>
           </div>
         </form>
@@ -615,7 +728,9 @@
         <!-- Payment History Log for Active Bill -->
         <div class="space-y-4">
           <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-3">
-            <h3 class="font-semibold text-sm uppercase tracking-wider text-slate-900 dark:text-white">Payment History Log</h3>
+            <h3 class="font-semibold text-sm uppercase tracking-wider text-slate-900 dark:text-white">
+              {$language === 'vi' ? 'Lịch sử thanh toán' : 'Payment History Log'}
+            </h3>
 
             {#if activeBillToPay && activeBillToPay.paymentHistory.length > 0}
               <div class="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
@@ -626,15 +741,15 @@
                       <span class="text-slate-400">{p.paymentDate}</span>
                     </div>
                     <div class="text-slate-500">
-                      {p.paymentMode} • Ref: {p.referenceNumber}
+                      {p.paymentMode} • {$language === 'vi' ? 'Mã:' : 'Ref:'} {p.referenceNumber}
                     </div>
-                    <div class="text-[10px] text-slate-400">Recorded by: {p.recordedBy}</div>
+                    <div class="text-[10px] text-slate-400">{$language === 'vi' ? 'Ghi nhận bởi:' : 'Recorded by:'} {p.recordedBy}</div>
                   </div>
                 {/each}
               </div>
             {:else}
               <div class="text-xs text-slate-400 py-6 text-center">
-                No payment history recorded for this invoice yet.
+                {$language === 'vi' ? 'Chưa có lịch sử thanh toán cho hóa đơn này.' : 'No payment history recorded for this invoice yet.'}
               </div>
             {/if}
           </div>
@@ -646,9 +761,13 @@
     {#if activeTab === 'charge-settings'}
       <div class="max-w-2xl bg-white dark:bg-slate-900 p-6 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
         <div>
-          <h3 class="text-lg font-bold text-slate-900 dark:text-white">Tariff Policy & Statutory Tax Settings</h3>
+          <h3 class="text-lg font-bold text-slate-900 dark:text-white">
+            {$language === 'vi' ? 'Chính sách biểu cước & Cài đặt thuế suất' : 'Tariff Policy & Statutory Tax Settings'}
+          </h3>
           <p class="text-xs text-slate-500 mt-0.5">
-            Set baseline parameters applied globally across bill generation formulas.
+            {$language === 'vi'
+              ? 'Thiết lập các thông số tiêu chuẩn áp dụng tự động vào công thức phát hành hóa đơn.'
+              : 'Set baseline parameters applied globally across bill generation formulas.'}
           </p>
         </div>
 
@@ -658,10 +777,10 @@
             <div class="flex items-center justify-between">
               <div>
                 <label class="block text-xs font-bold uppercase tracking-wider text-blue-900 dark:text-blue-200">
-                  Standard Service Tax Rate (%) *
+                  {$language === 'vi' ? 'Thuế suất dịch vụ chuẩn (%) *' : 'Standard Service Tax Rate (%) *'}
                 </label>
                 <p class="text-[11px] text-slate-500">
-                  Statutory requirement as specified in system specifications: 12.24%
+                  {$language === 'vi' ? 'Quy định pháp lý theo đặc tả hệ thống: 12.24%' : 'Statutory requirement as specified in system specifications: 12.24%'}
                 </p>
               </div>
               <input
@@ -678,20 +797,22 @@
 
           <!-- Late Payment Fee % -->
           <div>
-            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">Late Payment Surcharge (%)</label>
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              {$language === 'vi' ? 'Phí phạt quá hạn thanh toán (%)' : 'Late Payment Surcharge (%)'}
+            </label>
             <input
               type="number"
               step="0.1"
               min="0"
               bind:value={lateFeeSetting}
-              class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg font-mono tabular-nums"
+              class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg font-mono tabular-nums text-slate-900 dark:text-white"
             />
           </div>
 
           <!-- Default Security Deposits -->
           <div class="space-y-3 pt-2">
             <label class="block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Default Security Deposit Benchmarks ($)
+              {$language === 'vi' ? 'Định mức cọc bảo đảm mặc định ($)' : 'Default Security Deposit Benchmarks ($)'}
             </label>
             <div class="grid grid-cols-3 gap-3">
               <div>
@@ -700,7 +821,7 @@
                   type="number"
                   step="0.01"
                   bind:value={broadbandDeposit}
-                  class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg font-mono tabular-nums text-xs"
+                  class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg font-mono tabular-nums text-xs text-slate-900 dark:text-white"
                 />
               </div>
               <div>
@@ -709,7 +830,7 @@
                   type="number"
                   step="0.01"
                   bind:value={dialUpDeposit}
-                  class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg font-mono tabular-nums text-xs"
+                  class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg font-mono tabular-nums text-xs text-slate-900 dark:text-white"
                 />
               </div>
               <div>
@@ -718,7 +839,7 @@
                   type="number"
                   step="0.01"
                   bind:value={landlineDeposit}
-                  class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg font-mono tabular-nums text-xs"
+                  class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg font-mono tabular-nums text-xs text-slate-900 dark:text-white"
                 />
               </div>
             </div>
@@ -729,7 +850,7 @@
               type="submit"
               class="px-6 py-2.5 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition shadow"
             >
-              Save Charge Settings
+              {$language === 'vi' ? 'Lưu cấu hình biểu cước' : 'Save Charge Settings'}
             </button>
           </div>
         </form>
@@ -737,97 +858,111 @@
     {/if}
   </div>
 
-    <!-- GENERATED INVOICE PRINTABLE PREVIEW MODAL -->
-    {#if generatedInvoiceModal}
-      <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4">
-        <div class="w-full max-w-xl rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-6">
-          <!-- Invoice Header -->
-          <div class="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
-            <div>
-              <div class="text-xs font-bold text-blue-600 uppercase tracking-widest">Nexus Service Marketing System</div>
-              <h2 class="text-xl font-extrabold text-slate-900 dark:text-white">TAX INVOICE STATEMENT</h2>
-              <p class="text-xs text-slate-500">Official Billing Receipt & Tax Breakdown</p>
+  <!-- GENERATED INVOICE PRINTABLE PREVIEW MODAL -->
+  {#if generatedInvoiceModal}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4">
+      <div class="w-full max-w-xl rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-6">
+        <!-- Invoice Header -->
+        <div class="flex items-start justify-between border-b border-slate-200 dark:border-slate-800 pb-4">
+          <div>
+            <div class="text-xs font-bold text-blue-600 uppercase tracking-widest">Nexus Service Marketing System</div>
+            <h2 class="text-xl font-extrabold text-slate-900 dark:text-white">
+              {$language === 'vi' ? 'HÓA ĐƠN THUẾ DỊCH VỤ' : 'TAX INVOICE STATEMENT'}
+            </h2>
+            <p class="text-xs text-slate-500">
+              {$language === 'vi' ? 'Biên lai cước chính thức & Chi tiết thuế GTGT' : 'Official Billing Receipt & Tax Breakdown'}
+            </p>
+          </div>
+          <button
+            onclick={() => (generatedInvoiceModal = null)}
+            class="text-slate-400 hover:text-slate-600 dark:hover:text-white"
+          >
+            <X class="h-5 w-5" />
+          </button>
+        </div>
+
+        <!-- Invoice Details -->
+        <div class="grid grid-cols-2 gap-4 text-xs">
+          <div class="space-y-1">
+            <div class="text-slate-400">{$language === 'vi' ? 'Khách hàng:' : 'Billed To:'}</div>
+            <div class="font-bold text-sm text-slate-900 dark:text-white">{generatedInvoiceModal.customerName}</div>
+            <div class="font-mono text-blue-600 dark:text-blue-400">
+              {$language === 'vi' ? 'Mã TK:' : 'Account ID:'} {generatedInvoiceModal.accountId}
             </div>
+          </div>
+
+          <div class="text-right space-y-1">
+            <div class="font-mono font-bold text-slate-900 dark:text-white">{generatedInvoiceModal.invoiceNumber}</div>
+            <div class="text-slate-500">{$language === 'vi' ? 'Ngày lập:' : 'Billing Date:'} {generatedInvoiceModal.billingDate}</div>
+            <div class="text-slate-500">{$language === 'vi' ? 'Hạn nộp:' : 'Due Date:'} {generatedInvoiceModal.dueDate}</div>
+          </div>
+        </div>
+
+        <!-- Line Items Breakdown -->
+        <div class="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden text-xs">
+          <table class="w-full text-left">
+            <thead class="bg-slate-50 dark:bg-slate-800/60 uppercase font-semibold text-slate-500 border-b border-slate-200 dark:border-slate-800">
+              <tr>
+                <th class="px-3 py-2">{$language === 'vi' ? 'Nội dung' : 'Description'}</th>
+                <th class="px-3 py-2 text-right">{$language === 'vi' ? 'Số tiền ($)' : 'Amount ($)'}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+              <tr>
+                <td class="px-3 py-2">{$language === 'vi' ? 'Tiền đặt cọc (Hoàn lại)' : 'Security Deposit (Refundable)'}</td>
+                <td class="px-3 py-2 text-right font-mono tabular-nums">${generatedInvoiceModal.securityDeposit.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td class="px-3 py-2">{$language === 'vi' ? 'Cước thuê bao gói' : 'Monthly Rental'} — {generatedInvoiceModal.planName}</td>
+                <td class="px-3 py-2 text-right font-mono tabular-nums">${generatedInvoiceModal.monthlyRental.toFixed(2)}</td>
+              </tr>
+              {#if generatedInvoiceModal.hourlyCharges > 0}
+                <tr>
+                  <td class="px-3 py-2">{$language === 'vi' ? 'Cước theo giờ / Cước sử dụng' : 'Hourly / Usage Charges'}</td>
+                  <td class="px-3 py-2 text-right font-mono tabular-nums">${generatedInvoiceModal.hourlyCharges.toFixed(2)}</td>
+                </tr>
+              {/if}
+              {#if generatedInvoiceModal.discountAmount > 0}
+                <tr class="text-emerald-700 dark:text-emerald-400">
+                  <td class="px-3 py-2">{$language === 'vi' ? `Chiết khấu số lượng / Doanh nghiệp (${generatedInvoiceModal.discountPercent}%)` : `Bulk / Corporate Scheme Discount (${generatedInvoiceModal.discountPercent}%)`}</td>
+                  <td class="px-3 py-2 text-right font-mono tabular-nums font-bold">−${generatedInvoiceModal.discountAmount.toFixed(2)}</td>
+                </tr>
+              {/if}
+              <tr class="bg-slate-50 dark:bg-slate-950 font-semibold">
+                <td class="px-3 py-2">{$language === 'vi' ? 'Tổng tiền trước thuế' : 'Subtotal'}</td>
+                <td class="px-3 py-2 text-right font-mono tabular-nums">${generatedInvoiceModal.subtotal.toFixed(2)}</td>
+              </tr>
+              <tr class="bg-blue-50/50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 font-medium">
+                <td class="px-3 py-2">{$language === 'vi' ? `Thuế dịch vụ (${generatedInvoiceModal.serviceTaxRate}%)` : `Service Tax (${generatedInvoiceModal.serviceTaxRate}%)`}</td>
+                <td class="px-3 py-2 text-right font-mono tabular-nums font-bold">+${generatedInvoiceModal.serviceTaxAmount.toFixed(2)}</td>
+              </tr>
+              <tr class="bg-slate-900 text-white font-bold text-sm">
+                <td class="px-3 py-2.5">{$language === 'vi' ? 'Tổng cộng phải trả ($)' : 'Grand Total Due ($)'}</td>
+                <td class="px-3 py-2.5 text-right font-mono tabular-nums text-emerald-400">${generatedInvoiceModal.totalAmount.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex justify-between items-center pt-2">
+          <span class="text-[11px] text-slate-400">
+            {$language === 'vi' ? 'Hóa đơn được phát hành tự động bởi Nexus Core Billing Engine' : 'Statutory invoice generated by Nexus Core Billing Engine'}
+          </span>
+          <div class="flex gap-2">
+            <button
+              onclick={() => window.print()}
+              class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center space-x-1.5"
+            >
+              <Printer class="h-3.5 w-3.5" />
+              <span>{$language === 'vi' ? 'In hóa đơn' : 'Print Invoice'}</span>
+            </button>
             <button
               onclick={() => (generatedInvoiceModal = null)}
-              class="text-slate-400 hover:text-slate-600 dark:hover:text-white"
+              class="px-4 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow"
             >
-              <X class="h-5 w-5" />
+              {$language === 'vi' ? 'Hoàn tất' : 'Done'}
             </button>
-          </div>
-
-          <!-- Invoice Details -->
-          <div class="grid grid-cols-2 gap-4 text-xs">
-            <div class="space-y-1">
-              <div class="text-slate-400">Billed To:</div>
-              <div class="font-bold text-sm text-slate-900 dark:text-white">{generatedInvoiceModal.customerName}</div>
-              <div class="font-mono text-blue-600 dark:text-blue-400">Account ID: {generatedInvoiceModal.accountId}</div>
-            </div>
-
-            <div class="text-right space-y-1">
-              <div class="font-mono font-bold text-slate-900 dark:text-white">{generatedInvoiceModal.invoiceNumber}</div>
-              <div class="text-slate-500">Billing Date: {generatedInvoiceModal.billingDate}</div>
-              <div class="text-slate-500">Due Date: {generatedInvoiceModal.dueDate}</div>
-            </div>
-          </div>
-
-          <!-- Line Items Breakdown -->
-          <div class="border border-slate-200 dark:border-slate-800 rounded-lg overflow-hidden text-xs">
-            <table class="w-full text-left">
-              <thead class="bg-slate-50 dark:bg-slate-800/60 uppercase font-semibold text-slate-500 border-b border-slate-200 dark:border-slate-800">
-                <tr>
-                  <th class="px-3 py-2">Description</th>
-                  <th class="px-3 py-2 text-right">Amount ($)</th>
-                </tr>
-              </thead>
-              <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-                <tr>
-                  <td class="px-3 py-2">Security Deposit (Refundable)</td>
-                  <td class="px-3 py-2 text-right font-mono tabular-nums">${generatedInvoiceModal.securityDeposit.toFixed(2)}</td>
-                </tr>
-                <tr>
-                  <td class="px-3 py-2">Monthly Rental — {generatedInvoiceModal.planName}</td>
-                  <td class="px-3 py-2 text-right font-mono tabular-nums">${generatedInvoiceModal.monthlyRental.toFixed(2)}</td>
-                </tr>
-                {#if generatedInvoiceModal.hourlyCharges > 0}
-                  <tr>
-                    <td class="px-3 py-2">Hourly / Usage Charges</td>
-                    <td class="px-3 py-2 text-right font-mono tabular-nums">${generatedInvoiceModal.hourlyCharges.toFixed(2)}</td>
-                  </tr>
-                {/if}
-                <tr class="bg-slate-50 dark:bg-slate-950 font-semibold">
-                  <td class="px-3 py-2">Subtotal</td>
-                  <td class="px-3 py-2 text-right font-mono tabular-nums">${generatedInvoiceModal.subtotal.toFixed(2)}</td>
-                </tr>
-                <tr class="bg-blue-50/50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-300 font-medium">
-                  <td class="px-3 py-2">Service Tax ({generatedInvoiceModal.serviceTaxRate}%)</td>
-                  <td class="px-3 py-2 text-right font-mono tabular-nums font-bold">+${generatedInvoiceModal.serviceTaxAmount.toFixed(2)}</td>
-                </tr>
-                <tr class="bg-slate-900 text-white font-bold text-sm">
-                  <td class="px-3 py-2.5">Grand Total Due ($)</td>
-                  <td class="px-3 py-2.5 text-right font-mono tabular-nums text-emerald-400">${generatedInvoiceModal.totalAmount.toFixed(2)}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <!-- Actions -->
-          <div class="flex justify-between items-center pt-2">
-            <span class="text-[11px] text-slate-400">Statutory invoice generated by Nexus Core Billing Engine</span>
-            <div class="flex gap-2">
-              <button
-                onclick={() => window.print()}
-                class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center space-x-1.5"
-              >
-                <Printer class="h-3.5 w-3.5" />
-                <span>Print Invoice</span>
-              </button>
-              <button
-                onclick={() => (generatedInvoiceModal = null)}
-                class="px-4 py-1.5 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white shadow"
-              >
-                Done
-              </button>
             </div>
           </div>
         </div>
@@ -836,11 +971,12 @@
 
     <!-- SETTINGS TAB -->
     {#if activeTab === 'settings'}
-      <div class="rounded-xl bg-white dark:bg-[#1E3349] p-8 text-center shadow-sm border border-[#CCE4F7] dark:border-[#253D56]">
-        <Settings class="h-12 w-12 mx-auto text-[#7899B8] dark:text-[#5E7F9F] mb-4" />
-        <h3 class="text-lg font-bold text-[#0F1D2B] dark:text-white mb-2">{$t.dashboard.settingsTitle}</h3>
-        <p class="text-[#537292] dark:text-[#8DB0D4]">{$t.dashboard.settingsDesc}</p>
-      </div>
+      <SettingsView />
+    {/if}
+
+    <!-- PROFILE TAB -->
+    {#if activeTab === 'profile'}
+      <ProfileView />
     {/if}
 </DashboardLayout>
 
