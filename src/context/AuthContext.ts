@@ -15,6 +15,14 @@ export interface AuthUser {
   orderId?: string;
   branchCode?: string;
   planName?: string;
+  // Personal profile fields
+  phone?: string;
+  address?: string;
+  avatar?: string;
+  gender?: 'male' | 'female' | 'other';
+  dateOfBirth?: string;
+  dateOfJoining?: string;
+  bio?: string;
 }
 
 // Staff accounts are internal: they are picked by role, no email/password prompt.
@@ -31,6 +39,12 @@ export const STAFF_ACCOUNTS: StaffAccount[] = [
       role: 'admin',
       title: 'General Manager',
       department: 'Executive Administration',
+      phone: '+84 901 888 999',
+      address: '72 Lê Lợi, Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+      gender: 'female',
+      dateOfBirth: '1988-04-12',
+      dateOfJoining: '2022-01-15',
+      bio: 'Phụ trách điều hành toàn bộ chiến lược phân phối viễn thông và quản trị phân hệ Nexus SMS.',
     },
   },
   {
@@ -41,6 +55,12 @@ export const STAFF_ACCOUNTS: StaffAccount[] = [
       role: 'retail',
       title: 'Store Representative',
       department: 'Retail Outlets (SH-01 Flagship)',
+      phone: '+84 902 777 666',
+      address: '154 Nguyễn Huệ, Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+      gender: 'male',
+      dateOfBirth: '1993-08-25',
+      dateOfJoining: '2023-03-01',
+      bio: 'Tư vấn các gói cước Cáp quang và Dial-Up, tiếp nhận hồ sơ và thanh toán cho khách hàng.',
     },
   },
   {
@@ -51,6 +71,12 @@ export const STAFF_ACCOUNTS: StaffAccount[] = [
       role: 'technical',
       title: 'Field Operations Engineer',
       department: 'Technical NOC & Field Ops',
+      phone: '+84 903 555 444',
+      address: '88 Hai Bà Trưng, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+      gender: 'male',
+      dateOfBirth: '1990-11-03',
+      dateOfJoining: '2022-06-10',
+      bio: 'Khảo sát hạ tầng, đo kiểm suy hao tín hiệu quang và cấp phát modem/router cho thuê bao.',
     },
   },
   {
@@ -61,6 +87,12 @@ export const STAFF_ACCOUNTS: StaffAccount[] = [
       role: 'accounts',
       title: 'Senior Accountant',
       department: 'Finance & Billing Division',
+      phone: '+84 904 333 222',
+      address: '26 Đồng Khởi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+      gender: 'female',
+      dateOfBirth: '1991-02-18',
+      dateOfJoining: '2022-09-01',
+      bio: 'Đối soát công nợ cước viễn thông, xuất hóa đơn thuế dịch vụ và ghi sổ thanh toán.',
     },
   },
 ];
@@ -158,6 +190,15 @@ function createAuthStore() {
     return account.user;
   };
 
+  const updateUserProfile = (updates: Partial<AuthUser>) => {
+    currentUser.update((u) => {
+      if (!u) return null;
+      const updated: AuthUser = { ...u, ...updates };
+      localStorage.setItem('nexus_auth_user', JSON.stringify(updated));
+      return updated;
+    });
+  };
+
   const logout = () => {
     currentUser.set(null);
     localStorage.removeItem('nexus_auth_user');
@@ -169,6 +210,7 @@ function createAuthStore() {
     loginWithAccountId,
     loginAfterPurchase,
     loginAsStaff,
+    updateUserProfile,
     logout,
   };
 }

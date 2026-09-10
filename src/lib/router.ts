@@ -17,6 +17,18 @@ export function navigate(to: string) {
   window.location.hash = to;
 }
 
+export const activeTabOverride = writable<{ path: string; tab: string } | null>(null);
+
+export function navigateTo(path: string, tab?: string) {
+  if (tab) {
+    activeTabOverride.set({ path, tab });
+    window.location.hash = `${path}?tab=${tab}`;
+  } else {
+    activeTabOverride.set(null);
+    window.location.hash = path;
+  }
+}
+
 // Reads a query param from the hash (e.g. '#/register?plan=plan-bb-01').
 export function queryParam(name: string): string | null {
   const h = window.location.hash.replace(/^#/, '');

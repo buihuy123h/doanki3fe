@@ -47,7 +47,7 @@
     $language === 'vi' ? `${price.toLocaleString('vi-VN')}₫/tháng` : `$${price.toFixed(2)}/mo`;
 </script>
 
-<div class="h-full w-full overflow-y-auto overflow-x-hidden bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] font-sans antialiased selection:bg-sky-500 selection:text-white transition-colors duration-300">
+<div class="h-full w-full overflow-y-scroll overflow-x-hidden bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] font-sans antialiased selection:bg-sky-500 selection:text-white transition-colors duration-300">
   <!-- 1. TOP NAVBAR -->
   <header class="sticky top-0 z-40 w-full backdrop-blur-md bg-white/85 dark:bg-[#152434]/85 border-b border-[#CCE4F7] dark:border-[#253D56] transition-colors duration-300">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">

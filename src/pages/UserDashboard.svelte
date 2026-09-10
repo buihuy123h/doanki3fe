@@ -4,16 +4,35 @@
   import { nexusStore } from '../context/NexusContext';
   import { languageStore } from '../context/LanguageContext';
   import DashboardLayout from '../components/layout/DashboardLayout.svelte';
+  import SettingsView from '../components/common/SettingsView.svelte';
+  import ProfileView from '../components/common/ProfileView.svelte';
   import type { NavItem } from '../components/layout/DashboardLayout.svelte';
   import { User, Activity, Settings, CreditCard, LayoutDashboard, Store, MapPin, KeyRound, MessageSquare, Star } from 'lucide-svelte';
   import type { FeedbackCategory } from '../types/nexus';
   import { toast } from 'svelte-sonner';
+  import { queryParam, activeTabOverride } from '../lib/router';
 
   const { currentUser } = authStore;
   const { connections, orders, bills, retailShops, feedbacks, addFeedback } = nexusStore;
   const { t, language } = languageStore;
 
   let activeTab = $state('overview');
+
+  // Reactively respond to tab overrides from router / notifications
+  $effect(() => {
+    const override = $activeTabOverride;
+    const validTabs = ['overview', 'settings', 'profile'];
+    if (override && override.path === '/user') {
+      if (validTabs.includes(override.tab)) {
+        activeTab = override.tab;
+      }
+    } else {
+      const qTab = queryParam('tab');
+      if (qTab && validTabs.includes(qTab)) {
+        activeTab = qTab;
+      }
+    }
+  });
 
   // Feedback form (functional requirement #2)
   let fbRating = $state(5);
@@ -346,10 +365,8 @@
       </div>
     </div>
   {:else if activeTab === 'settings'}
-    <div class="rounded-xl bg-white dark:bg-[#1E3349] p-8 text-center shadow-sm border border-[#CCE4F7] dark:border-[#253D56]">
-      <Settings class="h-12 w-12 mx-auto text-[#7899B8] dark:text-[#5E7F9F] mb-4" />
-      <h3 class="text-lg font-bold text-[#0F1D2B] dark:text-white mb-2">{$t.dashboard.settingsTitle}</h3>
-      <p class="text-[#537292] dark:text-[#8DB0D4]">{$t.dashboard.settingsDesc}</p>
-    </div>
+    <SettingsView />
+  {:else if activeTab === 'profile'}
+    <ProfileView />
   {/if}
 </DashboardLayout>

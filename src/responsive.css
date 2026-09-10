@@ -17,32 +17,46 @@
   }
 }
 
-/* Smooth touch scrolling for all scrollable containers */
+/* Smooth touch scrolling & scrollbar stability for all scrollable containers */
 .overflow-y-auto,
+.overflow-y-scroll,
 .overflow-x-auto,
 main {
   -webkit-overflow-scrolling: touch;
   scroll-behavior: smooth;
+  scrollbar-gutter: stable;
 }
 
-/* Thanh cuộn dọc thanh mảnh, hiện đại cho mọi trang (bao gồm LoginPage) */
-.overflow-y-auto::-webkit-scrollbar {
+/* Thanh cuộn dọc thanh mảnh, hiện đại cho mọi màn hình & component */
+.overflow-y-auto::-webkit-scrollbar,
+.overflow-y-scroll::-webkit-scrollbar,
+main::-webkit-scrollbar {
   width: 6px;
 }
-.overflow-y-auto::-webkit-scrollbar-track {
+.overflow-y-auto::-webkit-scrollbar-track,
+.overflow-y-scroll::-webkit-scrollbar-track,
+main::-webkit-scrollbar-track {
   background: transparent;
 }
-.overflow-y-auto::-webkit-scrollbar-thumb {
+.overflow-y-auto::-webkit-scrollbar-thumb,
+.overflow-y-scroll::-webkit-scrollbar-thumb,
+main::-webkit-scrollbar-thumb {
   background: #B3D0EC;
   border-radius: 9999px;
 }
-.dark .overflow-y-auto::-webkit-scrollbar-thumb {
+.dark .overflow-y-auto::-webkit-scrollbar-thumb,
+.dark .overflow-y-scroll::-webkit-scrollbar-thumb,
+.dark main::-webkit-scrollbar-thumb {
   background: #2A4666;
 }
-.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+.overflow-y-auto::-webkit-scrollbar-thumb:hover,
+.overflow-y-scroll::-webkit-scrollbar-thumb:hover,
+main::-webkit-scrollbar-thumb:hover {
   background: #8DB0D4;
 }
-.dark .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+.dark .overflow-y-auto::-webkit-scrollbar-thumb:hover,
+.dark .overflow-y-scroll::-webkit-scrollbar-thumb:hover,
+.dark main::-webkit-scrollbar-thumb:hover {
   background: #3B5F8A;
 }
 
@@ -260,8 +274,14 @@ main {
 }
 
 /* --------------------------------------------------------------------------
-   7. MODALS & DIALOGS RESPONSIVE (POPUPS CHỐNG TRÀN MÀN HÌNH)
+   7. MODALS & DIALOGS RESPONSIVE (POPUPS CHỐNG TRÀN MÀN HÌNH TRÊN MỌI THIẾT BỊ)
    -------------------------------------------------------------------------- */
+/* Cho mọi kích thước màn hình (Desktop, Laptop, Tablet, Mobile) */
+.fixed.inset-0.z-50 > div {
+  max-height: 90vh !important;
+  overflow-y: auto !important;
+}
+
 @media (max-width: 640px) {
   /* Hộp thoại fixed overlay */
   .fixed.inset-0.z-50 {

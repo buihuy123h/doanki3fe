@@ -138,7 +138,7 @@
   ];
 </script>
 
-<div class="h-full w-full overflow-y-auto bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] flex flex-col justify-start sm:justify-center py-10 sm:py-16 px-4 sm:px-6 lg:px-8 relative transition-colors duration-300">
+<div class="h-full w-full overflow-y-scroll bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] flex flex-col justify-start sm:justify-center py-10 sm:py-16 px-4 sm:px-6 lg:px-8 relative transition-colors duration-300">
   <!-- Top left Back to Home Button -->
   <div class="fixed top-4 left-4 z-50">
     <button
