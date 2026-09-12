@@ -416,6 +416,11 @@
                           <span class="text-[10px] text-slate-500">
                             ({matchedOrder.bulkConnectionsCount} {$language === 'vi' ? 'kết nối' : 'connections'})
                           </span>
+                          {#if matchedOrder.orderGroupId}
+                            <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-400 border border-violet-300 dark:border-violet-700/50">
+                              📦 {matchedOrder.orderGroupIndex}/{matchedOrder.bulkConnectionsCount}
+                            </span>
+                          {/if}
                         {/if}
                       </div>
                       <div class="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5 flex items-center gap-1.5">

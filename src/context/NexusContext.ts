@@ -948,32 +948,46 @@ function createNexusStore() {
     | 'bulkDiscountPercent'
     | 'landlineFeasible'
     | 'internetFeasible'
+    | 'orderGroupId'
+    | 'orderGroupIndex'
   > & { bulkConnectionsCount?: number };
 
   const placeOrder = (orderData: PlaceOrderInput): Order => {
-    const currentOrders = get(orders);
-    const nextCount = currentOrders.length + 1;
-    const newId = generateOrderId(orderData.connectionType, nextCount);
+    const bulkConnectionsCount = Math.max(1, Math.floor(orderData.bulkConnectionsCount || 1));
+    const bulkDiscountPercent = getBulkDiscountPercent(bulkConnectionsCount);
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const createdAt = `${dateStr} ${timeStr}`;
 
-    const bulkConnectionsCount = Math.max(1, Math.floor(orderData.bulkConnectionsCount || 1));
+    // When bulk > 1, generate a shared orderGroupId and create N individual orders.
+    const orderGroupId = bulkConnectionsCount > 1 ? `GRP-${Date.now()}` : undefined;
+    const count = bulkConnectionsCount > 1 ? bulkConnectionsCount : 1;
+    const newOrders: Order[] = [];
 
-    const newOrder: Order = {
-      ...orderData,
-      bulkConnectionsCount,
-      bulkDiscountPercent: getBulkDiscountPercent(bulkConnectionsCount),
-      id: newId,
-      status: 'Pending',
-      createdAt: `${dateStr} ${timeStr}`,
-      cableDistanceMeters: Math.floor(60 + Math.random() * 400),
-      dpBoxCapacity: 'Port available / DP-Scan',
-      signalLossDbm: Number(-(14 + Math.random() * 8).toFixed(1)),
-    };
+    for (let i = 0; i < count; i++) {
+      const currentOrders = get(orders);
+      const nextCount = currentOrders.length + newOrders.length + 1;
+      const newId = generateOrderId(orderData.connectionType, nextCount);
 
-    orders.update((prev) => [newOrder, ...prev]);
-    return newOrder;
+      const newOrder: Order = {
+        ...orderData,
+        bulkConnectionsCount,
+        bulkDiscountPercent,
+        id: newId,
+        status: 'Pending',
+        createdAt,
+        cableDistanceMeters: Math.floor(60 + Math.random() * 400),
+        dpBoxCapacity: 'Port available / DP-Scan',
+        signalLossDbm: Number(-(14 + Math.random() * 8).toFixed(1)),
+        ...(orderGroupId ? { orderGroupId, orderGroupIndex: i + 1 } : {}),
+      };
+      newOrders.push(newOrder);
+    }
+
+    orders.update((prev) => [...newOrders, ...prev]);
+    // Return the first order (used for receipt display).
+    return newOrders[0];
   };
 
   // Account ID serial: 1 + number of IDs already issued anywhere.

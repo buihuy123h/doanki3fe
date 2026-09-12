@@ -287,7 +287,11 @@
     });
 
     placedOrder = newOrder;
-    toast.success(`Order ${newOrder.id} successfully created!`);
+    toast.success(
+      newOrder.orderGroupId
+        ? `${newOrder.bulkConnectionsCount} orders created! Group: ${newOrder.orderGroupId}, first ID: ${newOrder.id}`
+        : `Order ${newOrder.id} successfully created!`
+    );
 
     // Reset Form for next retail customer
     customerName = "";
@@ -1099,7 +1103,7 @@
                     : o.status === "Not Feasible"
                       ? "Không khả thi"
                       : "Chờ xử lý"
-                : o.status})
+                : o.status}){#if o.orderGroupId} 📦{o.orderGroupIndex}/{o.bulkConnectionsCount}{/if}
             </button>
           {:else}
             <span class="italic"

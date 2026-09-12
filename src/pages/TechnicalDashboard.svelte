@@ -368,6 +368,11 @@
                   <td class="px-4 py-3">
                     <span class="font-mono font-bold text-amber-600 dark:text-amber-400 text-sm">{order.id}</span>
                     <div class="text-[11px] text-slate-500 dark:text-slate-400">{order.createdAt}</div>
+                    {#if order.orderGroupId}
+                      <div class="mt-0.5 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-violet-100 dark:bg-violet-950/50 text-violet-700 dark:text-violet-400 border border-violet-300 dark:border-violet-700/50">
+                        📦 {order.orderGroupIndex}/{order.bulkConnectionsCount}
+                      </div>
+                    {/if}
                   </td>
                   <td class="px-4 py-3">
                     <div class="font-semibold text-slate-900 dark:text-white">{order.customerName}</div>

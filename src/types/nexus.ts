@@ -139,6 +139,12 @@ export interface Order {
   bulkConnectionsCount: number; // connections covered by this order (>= 1)
   bulkDiscountPercent: number; // derived from getBulkDiscountPercent()
 
+  // Group linking (mở rộng ngoài spec — xem SPEC-SUMMARY §2):
+  // when a bulk order creates N individual orders, they all share the same
+  // orderGroupId so dashboards can identify sibling orders.
+  orderGroupId?: string;    // e.g. "GRP-1726142775001" — only present when bulk > 1
+  orderGroupIndex?: number; // 1-based position within the group (1, 2, ..., N)
+
   // Dial-Up: feasibility is checked for BOTH the landline and the internet leg,
   // unless the customer already holds a Nexus landline (then internet only).
   existingLandlineAccountId?: string;

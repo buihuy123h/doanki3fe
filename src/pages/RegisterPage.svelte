@@ -234,6 +234,23 @@
                 <span>{$t.registrationPage.copyId}</span>
               </button>
             </div>
+            {#if placedOrder.orderGroupId}
+              <div class="mt-3 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/25">
+                <div class="flex items-center space-x-2 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+                  <Package class="h-4 w-4" />
+                  <span>
+                    {$language === 'vi'
+                      ? `Đã tạo ${placedOrder.bulkConnectionsCount} đơn hàng (nhóm ${placedOrder.orderGroupId})`
+                      : `${placedOrder.bulkConnectionsCount} orders created (group ${placedOrder.orderGroupId})`}
+                  </span>
+                </div>
+                <p class="mt-1 text-[11px] text-emerald-600 dark:text-emerald-400/80">
+                  {$language === 'vi'
+                    ? `Mỗi đơn sẽ được khảo sát, lắp đặt và xuất hóa đơn riêng biệt. Đơn đầu tiên: ${placedOrder.id}`
+                    : `Each order will be surveyed, provisioned, and billed independently. First order: ${placedOrder.id}`}
+                </p>
+              </div>
+            {/if}
             <p class="mt-2 text-[11px] text-amber-700 dark:text-amber-300 font-medium">
               {$t.registrationPage.saveOrderNotice}
             </p>
