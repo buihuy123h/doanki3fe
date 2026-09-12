@@ -113,15 +113,28 @@ export interface InventoryItem {
   supplier: string;
 }
 
-// 6. Orders (Retail & Technical Feasibility)
-export interface Order {
-  id: string; // 11-char alphanumeric: prefix D/B/T + 10-digit serial (e.g. "D0000000001")
-  customerName: string;
-  customerPhone: string;
-  customerEmail: string;
+// 5b. Customers (Normalized Subscriber Entity)
+export interface Customer {
+  id: string; // e.g. "CUST-001"
+  fullName: string;
+  phone: string;
+  email: string;
   installationAddress: string;
   idProofType: 'National ID Card' | 'Passport' | "Driver's License";
   idProofNumber: string;
+  createdAt: string;
+}
+
+// 6. Orders (Retail & Technical Feasibility)
+export interface Order {
+  id: string; // 11-char alphanumeric: prefix D/B/T + 10-digit serial (e.g. "D0000000001")
+  customerId: string; // FK to Customer.id
+  customerName: string; // denormalized display helper for reactive UI rendering
+  customerPhone?: string;
+  customerEmail?: string;
+  installationAddress?: string;
+  idProofType?: 'National ID Card' | 'Passport' | "Driver's License";
+  idProofNumber?: string;
   connectionType: ConnectionType;
   planId: string;
   planName: string;
@@ -156,10 +169,11 @@ export interface Order {
 export interface Connection {
   accountId: string; // 16-digit formatted: "XXXX-XXXX-XXXX-XXXX"
   orderId: string; // 11-digit order
-  customerName: string;
-  customerPhone: string;
-  customerEmail: string;
-  installationAddress: string;
+  customerId: string; // FK to Customer.id
+  customerName: string; // helper for UI
+  customerPhone?: string;
+  customerEmail?: string;
+  installationAddress?: string;
   connectionType: ConnectionType;
   planName: string;
   monthlyRental: number;
@@ -167,7 +181,7 @@ export interface Connection {
   status: ConnectionStatus;
   ipAddress?: string;
   portNumber?: string;
-  assignedDeviceSerial?: string;
+  assignedDeviceSerial?: string; // Optional helper, normalized source of truth is Equipment.assignedAccountId
   assignedDeviceModel?: string;
   installedDate: string;
   lastUpdated: string;
@@ -202,6 +216,7 @@ export interface PaymentRecord {
   paymentMode: 'Cash' | 'Cheque' | 'Credit/Debit Card' | 'Bank Transfer/NEFT' | 'UPI/Digital Wallet';
   referenceNumber: string;
   recordedBy: string;
+  recordedByEmployeeId?: string; // FK to Employees.id
 }
 
 export interface Bill {

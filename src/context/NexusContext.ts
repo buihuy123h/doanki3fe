@@ -2,6 +2,7 @@ import { writable, get } from 'svelte/store';
 import {
   CONNECTION_TYPE_LETTER,
   getBulkDiscountPercent,
+  type Customer,
   type Plan,
   type Employee,
   type Vendor,
@@ -487,9 +488,83 @@ const INITIAL_INVENTORY: InventoryItem[] = [
   },
 ];
 
+const INITIAL_CUSTOMERS: Customer[] = [
+  {
+    id: 'cust-01',
+    fullName: 'Arthur Pendelton',
+    phone: '+1 (555) 902-1844',
+    email: 'arthur.p@classiccorp.net',
+    installationAddress: '144 West 82nd St, Apt 4B, New York, NY 10024',
+    idProofType: 'National ID Card',
+    idProofNumber: 'ID-US-9918231',
+    createdAt: '2026-09-04 10:30',
+  },
+  {
+    id: 'cust-02',
+    fullName: 'Samantha Vance',
+    phone: '+1 (555) 301-4477',
+    email: 'samantha.vance@gmail.com',
+    installationAddress: '78 Mercer St, Soho, New York, NY 10012',
+    idProofType: 'Passport',
+    idProofNumber: 'P-98827419',
+    createdAt: '2026-09-04 14:15',
+  },
+  {
+    id: 'cust-03',
+    fullName: 'Highline Consulting LLC',
+    phone: '+1 (555) 777-8899',
+    email: 'office@highlineconsulting.com',
+    installationAddress: '55 Hudson Yards, Fl 18, New York, NY 10001',
+    idProofType: "Driver's License",
+    idProofNumber: 'DL-NY-2940192',
+    createdAt: '2026-09-02 09:00',
+  },
+  {
+    id: 'cust-04',
+    fullName: 'Robert Lewandowski',
+    phone: '+1 (555) 621-9988',
+    email: 'robert.lewan@yahoo.com',
+    installationAddress: '89-12 Far Rockaway Blvd, Queens, NY 11693',
+    idProofType: 'National ID Card',
+    idProofNumber: 'ID-US-8827391',
+    createdAt: '2026-09-03 11:45',
+  },
+  {
+    id: 'cust-05',
+    fullName: 'Victoria Sterling',
+    phone: '+1 (555) 441-2099',
+    email: 'v.sterling@apexlegal.org',
+    installationAddress: '120 E 64th St, Manhattan, NY 10065',
+    idProofType: 'Passport',
+    idProofNumber: 'P-11928472',
+    createdAt: '2026-08-14 09:00',
+  },
+  {
+    id: 'cust-06',
+    fullName: 'Retro Arcade Lounge LLC',
+    phone: '+1 (555) 332-9011',
+    email: 'manager@retroarcadeny.com',
+    installationAddress: '31 St Marks pl, East Village, NY 10003',
+    idProofType: "Driver's License",
+    idProofNumber: 'DL-NY-8829101',
+    createdAt: '2026-07-09 14:00',
+  },
+  {
+    id: 'cust-07',
+    fullName: 'Jonathan Meyer',
+    phone: '+1 (555) 881-2300',
+    email: 'j.meyer@brooklynloft.io',
+    installationAddress: '175 Water St, Dumbo, Brooklyn, NY 11201',
+    idProofType: 'National ID Card',
+    idProofNumber: 'ID-US-5544129',
+    createdAt: '2026-05-17 11:00',
+  },
+];
+
 const INITIAL_ORDERS: Order[] = [
   {
     id: 'D0000000001',
+    customerId: 'cust-01',
     customerName: 'Arthur Pendelton',
     customerPhone: '+1 (555) 902-1844',
     customerEmail: 'arthur.p@classiccorp.net',
@@ -508,10 +583,10 @@ const INITIAL_ORDERS: Order[] = [
     signalLossDbm: -18.5,
     bulkConnectionsCount: 1,
     bulkDiscountPercent: 0,
-    // New Dial-Up customer with no Nexus landline yet: both legs need a check.
   },
   {
     id: 'B0000000002',
+    customerId: 'cust-02',
     customerName: 'Samantha Vance',
     customerPhone: '+1 (555) 301-4477',
     customerEmail: 'samantha.vance@gmail.com',
@@ -536,6 +611,7 @@ const INITIAL_ORDERS: Order[] = [
   },
   {
     id: 'T0000000003',
+    customerId: 'cust-03',
     customerName: 'Highline Consulting LLC',
     customerPhone: '+1 (555) 777-8899',
     customerEmail: 'office@highlineconsulting.com',
@@ -560,6 +636,7 @@ const INITIAL_ORDERS: Order[] = [
   },
   {
     id: 'B0000000004',
+    customerId: 'cust-04',
     customerName: 'Robert Lewandowski',
     customerPhone: '+1 (555) 621-9988',
     customerEmail: 'robert.lewan@yahoo.com',
@@ -587,6 +664,7 @@ const INITIAL_CONNECTIONS: Connection[] = [
   {
     accountId: 'T064-000000000001',
     orderId: 'T0000000003',
+    customerId: 'cust-03',
     customerName: 'Highline Consulting LLC',
     customerPhone: '+1 (555) 777-8899',
     customerEmail: 'office@highlineconsulting.com',
@@ -606,6 +684,7 @@ const INITIAL_CONNECTIONS: Connection[] = [
   {
     accountId: 'B064-000000000002',
     orderId: 'B0000000005',
+    customerId: 'cust-05',
     customerName: 'Victoria Sterling',
     customerPhone: '+1 (555) 441-2099',
     customerEmail: 'v.sterling@apexlegal.org',
@@ -625,6 +704,7 @@ const INITIAL_CONNECTIONS: Connection[] = [
   {
     accountId: 'D064-000000000003',
     orderId: 'D0000000006',
+    customerId: 'cust-06',
     customerName: 'Retro Arcade Lounge LLC',
     customerPhone: '+1 (555) 332-9011',
     customerEmail: 'manager@retroarcadeny.com',
@@ -645,6 +725,7 @@ const INITIAL_CONNECTIONS: Connection[] = [
   {
     accountId: 'B081-000000000004',
     orderId: 'B0000000007',
+    customerId: 'cust-07',
     customerName: 'Jonathan Meyer',
     customerPhone: '+1 (555) 881-2300',
     customerEmail: 'j.meyer@brooklynloft.io',
@@ -762,6 +843,7 @@ const INITIAL_BILLS: Bill[] = [
         paymentMode: 'Credit/Debit Card',
         referenceNumber: 'TXN-VISA-994821',
         recordedBy: 'Elena Rostova',
+        recordedByEmployeeId: 'emp-04',
       },
     ],
   },
@@ -795,6 +877,7 @@ const INITIAL_BILLS: Bill[] = [
         paymentMode: 'Bank Transfer/NEFT',
         referenceNumber: 'ACH-CITI-449102',
         recordedBy: 'Elena Rostova',
+        recordedByEmployeeId: 'emp-04',
       },
     ],
   },
@@ -860,6 +943,7 @@ function createNexusStore() {
   // Bumped when the seed schema changes so stale localStorage is not reloaded.
   const V = '_v2';
   const currentRole = writable<RoleType>('admin');
+  const customers = writable<Customer[]>(loadFromStorage('nexus_customers' + V, INITIAL_CUSTOMERS));
   const plans = writable<Plan[]>(loadFromStorage('nexus_plans' + V, INITIAL_PLANS));
   const employees = writable<Employee[]>(loadFromStorage('nexus_employees' + V, INITIAL_EMPLOYEES));
   const vendors = writable<Vendor[]>(loadFromStorage('nexus_vendors' + V, INITIAL_VENDORS));
@@ -873,6 +957,7 @@ function createNexusStore() {
   const settings = writable<SystemSettings>(loadFromStorage('nexus_settings' + V, INITIAL_SETTINGS));
 
   // Auto-persist to localStorage on every change (mirrors React useEffect persistence)
+  customers.subscribe(persist('nexus_customers' + V));
   plans.subscribe(persist('nexus_plans' + V));
   employees.subscribe(persist('nexus_employees' + V));
   vendors.subscribe(persist('nexus_vendors' + V));
@@ -939,6 +1024,7 @@ function createNexusStore() {
   type PlaceOrderInput = Omit<
     Order,
     | 'id'
+    | 'customerId'
     | 'createdAt'
     | 'status'
     | 'cableDistanceMeters'
@@ -950,7 +1036,10 @@ function createNexusStore() {
     | 'internetFeasible'
     | 'orderGroupId'
     | 'orderGroupIndex'
-  > & { bulkConnectionsCount?: number };
+  > & {
+    customerId?: string;
+    bulkConnectionsCount?: number;
+  };
 
   const placeOrder = (orderData: PlaceOrderInput): Order => {
     const bulkConnectionsCount = Math.max(1, Math.floor(orderData.bulkConnectionsCount || 1));
@@ -959,6 +1048,33 @@ function createNexusStore() {
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const createdAt = `${dateStr} ${timeStr}`;
+
+    // Normalize customer: look up by ID number or phone, or create a new customer record.
+    let targetCustomerId = orderData.customerId;
+    if (!targetCustomerId) {
+      const currentCustomers = get(customers);
+      const existing = currentCustomers.find(
+        (c) =>
+          (orderData.idProofNumber && c.idProofNumber === orderData.idProofNumber) ||
+          (orderData.customerPhone && c.phone === orderData.customerPhone)
+      );
+      if (existing) {
+        targetCustomerId = existing.id;
+      } else {
+        targetCustomerId = `cust-${Date.now()}`;
+        const newCustomer: Customer = {
+          id: targetCustomerId,
+          fullName: orderData.customerName,
+          phone: orderData.customerPhone || '',
+          email: orderData.customerEmail || '',
+          installationAddress: orderData.installationAddress || '',
+          idProofType: orderData.idProofType || 'National ID Card',
+          idProofNumber: orderData.idProofNumber || '',
+          createdAt,
+        };
+        customers.update((prev) => [newCustomer, ...prev]);
+      }
+    }
 
     // When bulk > 1, generate a shared orderGroupId and create N individual orders.
     const orderGroupId = bulkConnectionsCount > 1 ? `GRP-${Date.now()}` : undefined;
@@ -972,6 +1088,7 @@ function createNexusStore() {
 
       const newOrder: Order = {
         ...orderData,
+        customerId: targetCustomerId,
         bulkConnectionsCount,
         bulkDiscountPercent,
         id: newId,
@@ -1077,6 +1194,7 @@ function createNexusStore() {
     const newConnection: Connection = {
       accountId: newAccountId,
       orderId: order.id,
+      customerId: order.customerId || 'cust-01',
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       customerEmail: order.customerEmail,
@@ -1283,6 +1401,7 @@ function createNexusStore() {
 
   return {
     currentRole,
+    customers,
     plans,
     employees,
     vendors,

@@ -50,7 +50,7 @@
     | "settings"
     | "profile";
 
-  const { plans, placeOrder, orders, connections, bills, recordPayment } =
+  const { plans, placeOrder, orders, connections, bills, recordPayment, equipments } =
     nexusStore;
   const { t, language } = languageStore;
 
@@ -1590,11 +1590,11 @@
                     ? "Thiết bị cấp:"
                     : "Assigned Device:"}</strong
                 >
-                {trackedConnection.assignedDeviceModel || "Standard CPE"}
+                {$equipments.find((eq) => eq.assignedAccountId === trackedConnection.accountId)?.deviceModel || trackedConnection.assignedDeviceModel || "Standard CPE"}
               </div>
               <div class="font-mono">
                 <strong>{$language === "vi" ? "Số sê-ri:" : "Serial:"}</strong>
-                {trackedConnection.assignedDeviceSerial || "NX-AUTO-GEN"}
+                {$equipments.find((eq) => eq.assignedAccountId === trackedConnection.accountId)?.serialNumber || trackedConnection.assignedDeviceSerial || "NX-AUTO-GEN"}
               </div>
             </div>
 

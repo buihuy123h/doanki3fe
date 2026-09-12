@@ -13,7 +13,7 @@
   import { queryParam, activeTabOverride } from '../lib/router';
 
   const { currentUser } = authStore;
-  const { connections, orders, bills, retailShops, feedbacks, addFeedback } = nexusStore;
+  const { connections, orders, bills, retailShops, feedbacks, addFeedback, equipments } = nexusStore;
   const { t, language } = languageStore;
 
   let activeTab = $state('overview');
@@ -42,6 +42,9 @@
   const accountId = $derived($currentUser?.accountId ?? '');
   const connection = $derived($connections.find((c) => c.accountId === accountId) ?? null);
   const order = $derived($orders.find((o) => o.assignedAccountId === accountId) ?? null);
+  const assignedEquipment = $derived(
+    $equipments.find((eq) => accountId && eq.assignedAccountId === accountId) ?? null
+  );
   const shop = $derived($retailShops.find((s) => s.shopCode === order?.retailOutletCode) ?? null);
   const myBills = $derived($bills.filter((b) => b.accountId === accountId));
   const latestBill = $derived(myBills[0] ?? null);
@@ -208,7 +211,7 @@
           <div>
             <div class="text-[#537292] dark:text-[#8DB0D4]">{$language === 'vi' ? 'Thiết bị đầu cuối' : 'CPE device'}</div>
             <div class="font-semibold text-[#0F1D2B] dark:text-white mt-0.5">
-              {connection?.assignedDeviceModel || ($language === 'vi' ? 'Chưa lắp đặt' : 'Not installed yet')}
+              {assignedEquipment?.deviceModel || connection?.assignedDeviceModel || ($language === 'vi' ? 'Chưa lắp đặt' : 'Not installed yet')}
             </div>
           </div>
           <div>
