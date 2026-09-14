@@ -35,8 +35,8 @@
   let agreeTerms = $state(true);
   let errorMessage = $state('');
 
-  // Bulk / corporate scheme
-  let bulkConnectionsCount = $state(1);
+  // Bulk / corporate scheme (default 50 connections = 50 router devices)
+  let bulkConnectionsCount = $state(50);
   // Dial-Up: does the customer already hold a Nexus landline?
   let hasExistingLandline = $state(false);
   let existingLandlineAccountId = $state('');
@@ -105,7 +105,7 @@
       planName: selectedPlan.name,
       retailOutletCode: selectedShop.shopCode,
       retailEmployeeName: 'Online Self-Service',
-      bulkConnectionsCount: Math.max(1, bulkConnectionsCount || 1),
+      bulkConnectionsCount: Math.max(1, bulkConnectionsCount || 50),
       ...(selectedPlan.type === 'Dial-Up' && hasExistingLandline && existingLandlineAccountId.trim()
         ? { existingLandlineAccountId: existingLandlineAccountId.trim() }
         : {}),
@@ -568,7 +568,7 @@
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label for="bulkCount" class="block text-xs font-semibold text-[#305070] dark:text-slate-300 uppercase tracking-wider mb-1.5">
-                    {$language === 'vi' ? 'Số lượng kết nối (gói doanh nghiệp)' : 'Number of connections (bulk)'}
+                    {$language === 'vi' ? 'Số lượng kết nối (mặc định 50 kết nối / 50 router thiết bị)' : 'Number of connections (default 50 connections / 50 routers)'}
                   </label>
                   <input
                     id="bulkCount"
@@ -579,8 +579,8 @@
                   />
                   <p class="mt-1 text-[11px] text-[#537292] dark:text-slate-400">
                     {$language === 'vi'
-                      ? '10–15: giảm 25% · 15–25: 50% · 25–50: 75% · trên 50: 100% (áp dụng cho cước ứng trước và tiền cọc).'
-                      : '10–15: 25% off · 15–25: 50% · 25–50: 75% · over 50: 100% (on the advance rental and the security deposit).'}
+                      ? '1 connection = 1 router thiết bị · Mặc định 50 kết nối (chiết khấu 75% cước & tiền cọc) · Trên 50: miễn phí 100%.'
+                      : '1 connection = 1 router device · Default 50 lines (75% off rental & deposit) · Over 50: 100% free.'}
                   </p>
                 </div>
 

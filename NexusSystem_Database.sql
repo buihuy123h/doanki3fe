@@ -18,6 +18,10 @@ GO
 USE NexusSystem;
 GO
 
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
+
 -- ===================================================================================
 -- 1. DROP EXISTING TABLES IN REVERSE DEPENDENCY ORDER (SAFE RE-RUN)
 -- ===================================================================================
@@ -209,9 +213,9 @@ CREATE TABLE dbo.Orders (
     ScheduledInstallDate   DATETIME         NULL,
     RejectionReason        NVARCHAR(500)    NULL,
 
-    -- Bulk / Corporate Scheme Discounts
-    BulkConnectionsCount   INT              NOT NULL DEFAULT 1,
-    BulkDiscountPercent    DECIMAL(5, 2)    NOT NULL DEFAULT 0.00,
+    -- Bulk / Corporate Scheme Discounts (Mặc định 50 connection / router thiết bị per Phương án 1)
+    BulkConnectionsCount   INT              NOT NULL DEFAULT 50,
+    BulkDiscountPercent    DECIMAL(5, 2)    NOT NULL DEFAULT 75.00,
 
     -- Dial-Up Dual-Leg Feasibility Flags
     ExistingLandlineAccountId VARCHAR(20)   NULL,
@@ -264,8 +268,8 @@ GO
 -- 2.9. CUSTOMER CONNECTION TABLE (Đường truyền thuê bao viễn thông)
 CREATE TABLE dbo.CustomerConnection (
     AccountID              VARCHAR(20)      NOT NULL, -- 16-20 char canonical account identifier
-    OrderID                VARCHAR(11)      NOT NULL,
-    EquipmentID            VARCHAR(20)      NULL,
+    OrderID                VARCHAR(11)      NOT NULL, -- Phương án 1: 1 Order -> N Connections (cho phép nhiều connection trên 1 đơn hàng)
+    EquipmentID            VARCHAR(20)      NULL,     -- 1 Connection = 1 Router thiết bị duy nhất (ràng buộc qua UQ_CustomerConnection_EquipmentID)
     Status                 VARCHAR(30)      NOT NULL DEFAULT 'Active',
     IpAddress              VARCHAR(50)      NULL,
     PortNumber             VARCHAR(50)      NULL,
@@ -277,7 +281,6 @@ CREATE TABLE dbo.CustomerConnection (
     LastStatusReason       NVARCHAR(500)    NULL,
 
     CONSTRAINT PK_CustomerConnection PRIMARY KEY CLUSTERED (AccountID),
-    CONSTRAINT UQ_CustomerConnection_OrderID UNIQUE (OrderID),
     CONSTRAINT FK_CustomerConnection_Order FOREIGN KEY (OrderID) REFERENCES dbo.Orders(OrderID),
     CONSTRAINT FK_CustomerConnection_Equipment FOREIGN KEY (EquipmentID) REFERENCES dbo.Equipment(EquipmentID) ON DELETE SET NULL,
     CONSTRAINT CK_CustomerConnection_Status CHECK (Status IN ('Active', 'Temporarily Inactive', 'Permanently Inactive'))
@@ -402,10 +405,16 @@ GO
 -- ===================================================================================
 -- 3. OPTIMIZED PERFORMANCE INDEXES
 -- ===================================================================================
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
 CREATE NONCLUSTERED INDEX IX_Orders_CustomerID ON dbo.Orders(CustomerID);
 CREATE NONCLUSTERED INDEX IX_Orders_StoreID ON dbo.Orders(StoreID);
 CREATE NONCLUSTERED INDEX IX_Orders_Status ON dbo.Orders(Status);
+CREATE NONCLUSTERED INDEX IX_CustomerConnection_OrderID ON dbo.CustomerConnection(OrderID);
 CREATE NONCLUSTERED INDEX IX_CustomerConnection_Status ON dbo.CustomerConnection(Status);
+-- Ràng buộc 1 Connection = 1 Router thiết bị: Mỗi Router thiết bị chỉ thuộc về tối đa 1 Connection đang kích hoạt
+CREATE UNIQUE NONCLUSTERED INDEX UQ_CustomerConnection_EquipmentID ON dbo.CustomerConnection(EquipmentID) WHERE EquipmentID IS NOT NULL;
 CREATE NONCLUSTERED INDEX IX_Bill_AccountID ON dbo.Bill(AccountID);
 CREATE NONCLUSTERED INDEX IX_Bill_Status ON dbo.Bill(Status);
 CREATE NONCLUSTERED INDEX IX_Bill_DueDate ON dbo.Bill(DueDate);
@@ -598,13 +607,13 @@ INSERT INTO dbo.Orders (OrderID, CustomerID, PlanID, StoreID, EmployeeID, Instal
 VALUES
 ('D0000000001', 'CUST-0001', 'plan-du-56', 'SH-02', 'emp-02', N'144 West 82nd St, Apt 4B, New York, NY 10024', '2026-09-04 10:30:00', 'Pending', 420, N'Port 6 Available / DP-B12', -18.50, NULL, NULL, NULL, NULL, NULL, 1, 0.00, NULL, NULL, NULL, NULL),
 ('B0000000002', 'CUST-0002', 'plan-bb-128', 'SH-01', 'emp-02', N'78 Mercer St, Soho, New York, NY 10012', '2026-09-04 14:15:00', 'Feasible', 85, N'Port 2 Available / DP-S04', -16.20, N'Fiber termination box available within 85m. Signal strength -16.2 dBm (Excellent). Line tested OK.', 'emp-03', '2026-09-04 16:00:00', '2026-09-08', NULL, 1, 0.00, NULL, NULL, 1, 'B064-000000000005'),
-('T0000000003', 'CUST-0003', 'plan-ll-std-m', 'SH-01', 'emp-02', N'55 Hudson Yards, Fl 18, New York, NY 10001', '2026-09-02 09:00:00', 'Connection Provided', 120, N'Port 8 Dedicated', -15.10, N'Copper loop line deployed. Line tested and audio quality verified.', 'emp-03', '2026-09-02 11:30:00', '2026-09-02', NULL, 12, 25.00, NULL, 1, NULL, 'T064-000000000001'),
-('B0000000004', 'CUST-0004', 'plan-bb-64', 'SH-03', 'emp-05', N'89-12 Far Rockaway Blvd, Queens, NY 11693', '2026-09-03 11:45:00', 'Not Feasible', 1150, N'No Spare Ports', -34.00, N'Distance to nearest fiber distribution box exceeds 1,150 meters. Severe optical attenuation (-34 dBm). Requires main trunk extension.', 'emp-03', '2026-09-03 15:00:00', NULL, N'Distance > 1km and optical loss exceeds threshold (-34 dBm)', 1, 0.00, NULL, NULL, 0, NULL),
-('B0000000005', 'CUST-0005', 'plan-bb-64', 'SH-01', 'emp-02', N'120 E 64th St, Manhattan, NY 10065', '2026-08-14 10:00:00', 'Connection Provided', 60, N'Port 1 Dedicated / DP-M01', -14.80, N'Direct splice into riser. Verified gigabit throughput.', 'emp-03', '2026-08-14 14:00:00', '2026-08-15', NULL, 1, 0.00, NULL, NULL, 1, 'B064-000000000002'),
-('D0000000006', 'CUST-0006', 'plan-du-56', 'SH-01', 'emp-02', N'31 St Marks pl, East Village, NY 10003', '2026-07-08 15:30:00', 'Connection Provided', 150, N'PSTN Riser Port 3', -17.20, N'PSTN copper pair active.', 'emp-03', '2026-07-09 10:00:00', '2026-07-10', NULL, 1, 0.00, NULL, 1, 1, 'D064-000000000003'),
-('B0000000007', 'CUST-0007', 'plan-bb-64', 'SH-04', 'emp-05', N'175 Water St, Dumbo, Brooklyn, NY 11201', '2026-05-15 11:00:00', 'Connection Provided', 90, N'DP-BK-11 Port 4', -15.50, N'Initial install verified.', 'emp-03', '2026-05-16 11:00:00', '2026-05-18', NULL, 1, 0.00, NULL, NULL, 1, 'B081-000000000004');
+('T0000000003', 'CUST-0003', 'plan-ll-std-m', 'SH-01', 'emp-02', N'55 Hudson Yards, Fl 18, New York, NY 10001', '2026-09-02 09:00:00', 'Connection Provided', 120, N'Port 8 Dedicated', -15.10, N'Copper loop line deployed. Line tested and audio quality verified.', 'emp-03', '2026-09-02 11:30:00', '2026-09-02', NULL, 50, 75.00, NULL, 1, NULL, 'T064-000000000001'),
+('B0000000004', 'CUST-0004', 'plan-bb-64', 'SH-03', 'emp-05', N'89-12 Far Rockaway Blvd, Queens, NY 11693', '2026-09-03 11:45:00', 'Not Feasible', 1150, N'No Spare Ports', -34.00, N'Distance to nearest fiber distribution box exceeds 1,150 meters. Severe optical attenuation (-34 dBm). Requires main trunk extension.', 'emp-03', '2026-09-03 15:00:00', NULL, N'Distance > 1km and optical loss exceeds threshold (-34 dBm)', 50, 75.00, NULL, NULL, 0, NULL),
+('B0000000005', 'CUST-0005', 'plan-bb-64', 'SH-01', 'emp-02', N'120 E 64th St, Manhattan, NY 10065', '2026-08-14 10:00:00', 'Connection Provided', 60, N'Port 1 Dedicated / DP-M01', -14.80, N'Direct splice into riser. Verified gigabit throughput.', 'emp-03', '2026-08-14 14:00:00', '2026-08-15', NULL, 50, 75.00, NULL, NULL, 1, 'B064-000000000002'),
+('D0000000006', 'CUST-0006', 'plan-du-56', 'SH-01', 'emp-02', N'31 St Marks pl, East Village, NY 10003', '2026-07-08 15:30:00', 'Connection Provided', 150, N'PSTN Riser Port 3', -17.20, N'PSTN copper pair active.', 'emp-03', '2026-07-09 10:00:00', '2026-07-10', NULL, 50, 75.00, NULL, 1, 1, 'D064-000000000003'),
+('B0000000007', 'CUST-0007', 'plan-bb-64', 'SH-04', 'emp-05', N'175 Water St, Dumbo, Brooklyn, NY 11201', '2026-05-15 11:00:00', 'Connection Provided', 90, N'DP-BK-11 Port 4', -15.50, N'Initial install verified.', 'emp-03', '2026-05-16 11:00:00', '2026-05-18', NULL, 50, 75.00, NULL, NULL, 1, 'B081-000000000004');
 
--- 5.8. EQUIPMENT (6 Thiết bị CPE gán thuê bao hoặc trong kho)
+-- 5.8. EQUIPMENT (6 Thiết bị CPE gán thuê bao hoặc trong kho - mỗi router gán tối đa 1 connection)
 INSERT INTO dbo.Equipment (EquipmentID, InventoryID, SerialNumber, MacAddress, DeviceModel, DeviceType, VendorID, StoreID, Status, FirmwareVersion, AssignedAccountId, AssignedTechnicianId, InstalledDate)
 VALUES
 ('eq-01', 'inv-01', 'NX-HW-992810', 'BC:A9:93:21:44:8E', N'Huawei EchoLife HG8245H5 GPON ONT',            'Fiber ONT Modem',          'vnd-02', 'SH-01', 'In Service', 'V500R019C20SPC120', 'B064-000000000002', 'emp-03', '2026-08-15 11:20:00'),
@@ -612,12 +621,13 @@ VALUES
 ('eq-03', 'inv-03', 'NX-MD-110294',  'F8:E4:FB:99:A2:03', N'USRobotics 56K V.92 Faxmodem USB/PSTN',         'VDSL2/ADSL Modem',         'vnd-04', 'SH-01', 'In Service', 'v2.1.8-PSTN',       'D064-000000000003', 'emp-03', '2026-07-10 14:00:00'),
 ('eq-04', 'inv-02', 'NX-HW-992811',  '00:1A:2B:3C:4D:5E', N'Nexus Wi-Fi 6 AX3000 Dual-Band Router',         'Gigabit Router',           'vnd-03', 'SH-01', 'In Stock',   'v3.2.4-BUILD-921',  NULL,                NULL,     NULL),
 ('eq-05', 'inv-01', 'NX-HW-992812',  '54:AF:97:88:B1:00', N'Huawei EchoLife HG8245H5 GPON ONT',             'Fiber ONT Modem',          'vnd-02', 'SH-01', 'In Stock',   'V500R019C20SPC120', NULL,                NULL,     NULL),
-('eq-06', 'inv-02', 'NX-HW-992813',  'A0:B1:C2:D3:E4:F5', N'Nexus Wi-Fi 6 AX3000 Dual-Band Router',         'Gigabit Router',           'vnd-03', 'SH-02', 'In Stock',   'v3.2.4-BUILD-921',  NULL,                NULL,     NULL);
+('eq-06', 'inv-02', 'NX-HW-992813',  'A0:B1:C2:D3:E4:F5', N'Nexus Wi-Fi 6 AX3000 Dual-Band Router',         'Gigabit Router',           'vnd-03', 'SH-01', 'In Service', 'v3.2.4-BUILD-921',  'T064-000000000008', 'emp-03', '2026-09-02 16:30:00');
 
--- 5.9. CUSTOMER CONNECTIONS (4 Thuê bao đường truyền)
+-- 5.9. CUSTOMER CONNECTIONS (Thuê bao đường truyền: minh họa 1 Order T0000000003 gắn nhiều Connection, mỗi Connection 1 Router riêng)
 INSERT INTO dbo.CustomerConnection (AccountID, OrderID, EquipmentID, Status, IpAddress, PortNumber, InstalledDate, SuspensionStartDate, SuspensionEndDate, TerminatedDate, LastUpdated, LastStatusReason)
 VALUES
 ('T064-000000000001', 'T0000000003', 'eq-02', 'Active', '198.51.100.42', 'VOIP-ETH-1', '2026-09-02 09:00:00', NULL, NULL, NULL, '2026-09-02 16:30:00', NULL),
+('T064-000000000008', 'T0000000003', 'eq-06', 'Active', '198.51.100.43', 'VOIP-ETH-2', '2026-09-02 09:30:00', NULL, NULL, NULL, '2026-09-02 16:30:00', NULL),
 ('B064-000000000002', 'B0000000005', 'eq-01', 'Active', '203.0.113.88', 'GPON-0/1/4', '2026-08-15 10:00:00', NULL, NULL, NULL, '2026-08-15 11:20:00', NULL),
 ('D064-000000000003', 'D0000000006', 'eq-03', 'Temporarily Inactive', '192.0.2.14', 'PSTN-LINE-4', '2026-07-10 14:00:00', '2026-09-01', '2026-10-31', NULL, '2026-09-01 09:15:00', N'Customer requested seasonal suspension during venue renovation.'),
 ('B081-000000000004', 'B0000000007', NULL, 'Permanently Inactive', NULL, NULL, '2026-05-18 11:00:00', NULL, NULL, '2026-08-30 17:00:00', '2026-08-30 17:00:00', N'Tenant relocated outside coverage zone; equipment returned and de-provisioned.');

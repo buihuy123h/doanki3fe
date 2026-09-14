@@ -100,8 +100,8 @@
   let idProofNumber = $state("");
   let connectionType = $state<ConnectionType>("Broadband");
   let selectedPlanId = $state("");
-  // Bulk / corporate scheme + Dial-Up existing landline
-  let bulkConnectionsCount = $state(1);
+  // Bulk / corporate scheme + Dial-Up existing landline (default 50 connections = 50 routers)
+  let bulkConnectionsCount = $state(50);
   let hasExistingLandline = $state(false);
   let existingLandlineAccountId = $state("");
   const bulkDiscountPercent = $derived(
@@ -367,7 +367,7 @@
       planName: currentPlan.name,
       retailOutletCode: "SH-01",
       retailEmployeeName: "David Chen",
-      bulkConnectionsCount: Math.max(1, bulkConnectionsCount || 1),
+      bulkConnectionsCount: Math.max(1, bulkConnectionsCount || 50),
       ...(connectionType === "Dial-Up" &&
       hasExistingLandline &&
       existingLandlineAccountId.trim()
@@ -384,7 +384,7 @@
     customerEmail = "";
     installationAddress = "";
     idProofNumber = "";
-    bulkConnectionsCount = 1;
+    bulkConnectionsCount = 50;
     hasExistingLandline = false;
     existingLandlineAccountId = "";
   };
@@ -839,8 +839,8 @@
                 class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1"
               >
                 {$language === "vi"
-                  ? "Số lượng kết nối (gói doanh nghiệp)"
-                  : "Number of connections (bulk)"}
+                  ? "Số lượng kết nối (mặc định 50 kết nối / 50 router thiết bị)"
+                  : "Number of connections (default 50 connections / 50 routers)"}
               </label>
               <input
                 type="number"
@@ -850,10 +850,10 @@
               />
               <p class="text-[11px] text-slate-500 mt-1">
                 {bulkDiscountPercent > 0
-                  ? `${$language === "vi" ? "Chiết khấu" : "Scheme discount"}: −${bulkDiscountPercent}% ${$language === "vi" ? "(cước ứng trước + tiền cọc)" : "(advance + deposit)"}`
+                  ? `${$language === "vi" ? "1 connection = 1 router thiết bị · Chiết khấu" : "1 connection = 1 router device · Scheme discount"}: −${bulkDiscountPercent}% ${$language === "vi" ? "(cước ứng trước + tiền cọc)" : "(advance + deposit)"}`
                   : $language === "vi"
-                    ? "Từ 10 kết nối trở lên được hưởng chiết khấu."
-                    : "Discount applies from 10 connections upward."}
+                    ? "1 connection = 1 router thiết bị. Mặc định 50 kết nối (chiết khấu 75%)."
+                    : "1 connection = 1 router device. Default 50 lines (75% discount)."}
               </p>
             </div>
             {#if connectionType === "Dial-Up"}

@@ -251,10 +251,33 @@
     targetOrderForRejection = null;
   };
 
+  // Tracking connection progress per order
+  const getOrderProvisionedConnections = (orderId: string) => {
+    return $connections.filter((c) => c.orderId === orderId);
+  };
+
+  const provisionedForCurrentOrder = $derived(
+    targetOrderForProvision
+      ? $connections.filter((c) => c.orderId === targetOrderForProvision!.id)
+      : [],
+  );
+
+  const targetOrderTotalConns = $derived(
+    targetOrderForProvision
+      ? Math.max(1, targetOrderForProvision.bulkConnectionsCount || 1)
+      : 1,
+  );
+
+  const currentProvisioningIndex = $derived(
+    provisionedForCurrentOrder.length + 1,
+  );
+
   const handleOpenProvisionModal = (order: Order) => {
     targetOrderForProvision = order;
     if (inStockEquipments.length > 0) {
       selectedDeviceSerial = inStockEquipments[0].serialNumber;
+    } else {
+      selectedDeviceSerial = "";
     }
     isProvisionModalOpen = true;
   };
@@ -265,23 +288,48 @@
 
     if (!selectedDeviceSerial) {
       toast.error(
-        "Please assign a modem or router serial number from inventory.",
+        $language === "vi"
+          ? "Vui lòng chọn 1 thiết bị router/modem từ kho cho kết nối này."
+          : "Please assign a modem or router serial number from inventory.",
       );
       return;
     }
 
+    const currentIdx = provisionedForCurrentOrder.length + 1;
+    const totalReq = targetOrderTotalConns;
+    const chosenSerial = selectedDeviceSerial;
+
     const createdConn = provisionConnectionForOrder(
       targetOrderForProvision.id,
-      selectedDeviceSerial,
+      chosenSerial,
     );
+
     if (createdConn) {
       toast.success(
-        `Connection Provided! Issued 16-character Account ID: ${createdConn.accountId} with device ${selectedDeviceSerial}`,
+        $language === "vi"
+          ? `Đã duyệt & cấp thành công Kết nối ${currentIdx}/${totalReq}! Account ID: ${createdConn.accountId} (Router: ${chosenSerial})`
+          : `Connection ${currentIdx}/${totalReq} provisioned! Account ID: ${createdConn.accountId} with device ${chosenSerial}`,
       );
-      // Auto focus Connection Manager to this new account
+      // Auto focus Connection Manager to this account
       selectedConnection = createdConn;
       techAccountSearch = createdConn.accountId;
       expandedAccountId = createdConn.accountId;
+
+      // If more connections need provisioning for this order:
+      if (currentIdx < totalReq) {
+        const remainingStock = inStockEquipments.filter(
+          (eq) => eq.serialNumber !== chosenSerial,
+        );
+        selectedDeviceSerial = remainingStock.length > 0 ? remainingStock[0].serialNumber : "";
+        // Stay in modal so technical staff can immediately review and approve the next connection
+        return;
+      } else {
+        toast.success(
+          $language === "vi"
+            ? `Đơn hàng #${targetOrderForProvision.id} đã hoàn tất duyệt đủ ${totalReq}/${totalReq} kết nối!`
+            : `Order #${targetOrderForProvision.id} is now fully provisioned with ${totalReq}/${totalReq} connections!`,
+        );
+      }
     }
 
     isProvisionModalOpen = false;
@@ -563,6 +611,8 @@
               class="divide-y divide-slate-200 dark:divide-slate-800/60 font-sans"
             >
               {#each filteredOrders as order (order.id)}
+                {@const provConns = getOrderProvisionedConnections(order.id)}
+                {@const totalReq = Math.max(1, order.bulkConnectionsCount || 1)}
                 <tr
                   class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition"
                 >
@@ -589,17 +639,27 @@
                     </div>
                   </td>
                   <td class="px-4 py-3">
-                    <span
-                      class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
-                    >
-                      {$language === "vi"
-                        ? order.connectionType === "Broadband"
-                          ? "Cáp quang"
-                          : order.connectionType === "Dial-Up"
-                            ? "Quay số"
-                            : "Cố định"
-                        : order.connectionType}
-                    </span>
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        class="text-xs font-semibold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200"
+                      >
+                        {$language === "vi"
+                          ? order.connectionType === "Broadband"
+                            ? "Cáp quang"
+                            : order.connectionType === "Dial-Up"
+                              ? "Quay số"
+                              : "Cố định"
+                          : order.connectionType}
+                      </span>
+                      {#if totalReq > 1}
+                        <span
+                          class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700/50"
+                          title={$language === "vi" ? `Đơn hàng đặt ${totalReq} kết nối` : `Order requesting ${totalReq} connections`}
+                        >
+                          ⚡ {totalReq} {$language === "vi" ? "kết nối" : "conns"}
+                        </span>
+                      {/if}
+                    </div>
                     <div
                       class="text-xs text-slate-500 dark:text-slate-400 mt-1"
                     >
@@ -653,12 +713,30 @@
                         ? order.status === "Pending"
                           ? "Chờ khảo sát"
                           : order.status === "Feasible"
-                            ? "Khả thi"
+                            ? (totalReq > 1 && provConns.length > 0
+                                ? `Đang duyệt (${provConns.length}/${totalReq})`
+                                : "Khả thi")
                             : order.status === "Not Feasible"
                               ? "Không khả thi"
                               : "Đã cấp kết nối"
                         : order.status}
                     </span>
+
+                    {#if totalReq > 1}
+                      <div class="mt-2 min-w-[120px]">
+                        <div class="flex items-center justify-between text-[10px] font-mono text-slate-500 dark:text-slate-400">
+                          <span>{$language === "vi" ? "Tiến độ duyệt:" : "Approved:"}</span>
+                          <span class="font-bold {provConns.length === totalReq ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}">{provConns.length}/{totalReq}</span>
+                        </div>
+                        <div class="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden mt-0.5">
+                          <div
+                            class="{provConns.length === totalReq ? 'bg-emerald-500' : 'bg-amber-500'} h-full rounded-full transition-all duration-300"
+                            style="width: {Math.round((provConns.length / totalReq) * 100)}%"
+                          ></div>
+                        </div>
+                      </div>
+                    {/if}
+
                     {#if order.assignedAccountId && order.status !== "Connection Provided"}
                       <div
                         class="text-[10px] font-mono text-slate-500 dark:text-slate-400 mt-1"
@@ -723,20 +801,39 @@
                         </button>
                         <button
                           onclick={() => handleOpenProvisionModal(order)}
-                          class="px-2.5 py-1 rounded text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition shadow"
+                          class="px-2.5 py-1 rounded text-xs font-bold transition shadow {provConns.length > 0 && provConns.length < totalReq
+                            ? 'bg-amber-600 hover:bg-amber-700 text-white ring-2 ring-amber-400 animate-pulse'
+                            : 'bg-amber-600 hover:bg-amber-700 text-white'}"
                           title={$language === "vi"
-                            ? "Gán thiết bị và cấp tín hiệu"
+                            ? totalReq > 1
+                              ? `Duyệt kết nối #${provConns.length + 1} của đơn hàng này`
+                              : "Gán thiết bị và cấp tín hiệu"
                             : "Assign modem/router and provision connection"}
                         >
-                          {$language === "vi"
-                            ? "Cung cấp kết nối"
-                            : "Connection Provided"}
+                          {#if totalReq > 1}
+                            {$language === "vi"
+                              ? provConns.length === 0
+                                ? `Duyệt kết nối (1/${totalReq})`
+                                : `Duyệt tiếp (${provConns.length + 1}/${totalReq})`
+                              : `Provision (${provConns.length + 1}/${totalReq})`}
+                          {:else}
+                            {$language === "vi"
+                              ? "Cung cấp kết nối"
+                              : "Connection Provided"}
+                          {/if}
                         </button>
                       {:else}
-                        <span
-                          class="text-xs text-slate-505 dark:text-slate-400 font-mono"
-                          >Account: {order.assignedAccountId}</span
-                        >
+                        <div class="text-right">
+                          <span
+                            class="text-xs text-emerald-600 dark:text-emerald-400 font-mono font-semibold"
+                            >✓ {$language === "vi" ? `Đã cấp đủ ${totalReq} kết nối` : `All ${totalReq} conns provisioned`}</span
+                          >
+                          {#if provConns.length > 0}
+                            <div class="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                              {provConns.length === 1 ? provConns[0].accountId : `${provConns[0].accountId} … (+${provConns.length - 1})`}
+                            </div>
+                          {/if}
+                        </div>
                       {/if}
                     </div>
                   </td>
@@ -1626,10 +1723,10 @@
   <!-- PROVISIONING MODAL ("Connection Provided") -->
   {#if isProvisionModalOpen && targetOrderForProvision}
     <div
-      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4 overflow-y-auto"
     >
       <div
-        class="w-full max-w-lg rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4"
+        class="w-full max-w-xl rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl space-y-4 my-8"
       >
         <div
           class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3"
@@ -1639,13 +1736,13 @@
               class="text-xs font-mono text-amber-600 dark:text-amber-400 uppercase font-semibold"
             >
               {$language === "vi"
-                ? "Kỹ sư hiện trường nghiệm thu"
-                : "Field Engineer Provisioning"}
+                ? "Kỹ sư hiện trường duyệt & cấp kết nối"
+                : "Field Engineer Circuit Provisioning"}
             </span>
             <h3 class="text-lg font-bold text-slate-900 dark:text-white">
               {$language === "vi"
                 ? `Cung cấp kết nối cho Đơn #${targetOrderForProvision.id}`
-                : `Provide Connection for Order #${targetOrderForProvision.id}`}
+                : `Provision Connection for Order #${targetOrderForProvision.id}`}
             </h3>
           </div>
           <button
@@ -1660,77 +1757,180 @@
           onsubmit={handleConfirmConnectionProvided}
           class="space-y-4 text-sm"
         >
+          <!-- Order Summary Card -->
           <div
-            class="p-3 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-1.5 text-xs text-slate-600 dark:text-slate-300"
+            class="p-3.5 rounded-lg bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2 text-xs text-slate-600 dark:text-slate-300"
           >
-            <div>
-              {$language === "vi" ? "Thuê bao:" : "Subscriber:"}
-              <strong class="text-slate-900 dark:text-white"
-                >{targetOrderForProvision.customerName}</strong
-              >
+            <div class="grid grid-cols-2 gap-2">
+              <div>
+                {$language === "vi" ? "Thuê bao:" : "Subscriber:"}
+                <div class="font-semibold text-slate-900 dark:text-white">
+                  {targetOrderForProvision.customerName}
+                </div>
+              </div>
+              <div>
+                {$language === "vi" ? "Gói cước:" : "Plan:"}
+                <div class="font-semibold text-amber-600 dark:text-amber-400">
+                  {targetOrderForProvision.planName} ({targetOrderForProvision.connectionType})
+                </div>
+              </div>
             </div>
             <div>
-              {$language === "vi" ? "Địa chỉ:" : "Address:"}
-              <strong class="text-slate-900 dark:text-white"
-                >{targetOrderForProvision.installationAddress}</strong
-              >
+              {$language === "vi" ? "Địa chỉ lắp đặt:" : "Address:"}
+              <div class="font-medium text-slate-900 dark:text-white">
+                {targetOrderForProvision.installationAddress}
+              </div>
             </div>
-            <div>
-              {$language === "vi" ? "Gói cước:" : "Service Plan:"}
-              <strong class="text-amber-600 dark:text-amber-400"
-                >{targetOrderForProvision.planName} ({targetOrderForProvision.connectionType})</strong
-              >
-            </div>
-          </div>
 
-          <div>
-            <label
-              class="block text-xs font-mono font-semibold text-slate-700 dark:text-slate-300 mb-1"
-            >
-              {$language === "vi"
-                ? "Gán Modem / Router từ kho thiết bị *"
-                : "Assign Modem / Router from Stock *"}
-            </label>
-            {#if inStockEquipments.length > 0}
-              <select
-                bind:value={selectedDeviceSerial}
-                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
-              >
-                {#each inStockEquipments as eq (eq.id)}
-                  <option value={eq.serialNumber}
-                    >{eq.serialNumber} — {eq.deviceModel} ({eq.macAddress})</option
-                  >
-                {/each}
-              </select>
-            {:else}
-              <div
-                class="p-3 rounded bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs"
-              >
-                {$language === "vi"
-                  ? "Không có thiết bị nào trong kho sẵn sàng. Vui lòng nhập thêm thiết bị."
-                  : "No hardware units currently marked as 'In Stock'. Please register or return equipment."}
+            <!-- Multi-connection Stepper -->
+            {#if targetOrderTotalConns > 1}
+              <div class="pt-2 border-t border-slate-200 dark:border-slate-800/80 space-y-1.5">
+                <div class="flex items-center justify-between font-mono text-[11px]">
+                  <span class="text-slate-500 dark:text-slate-400">
+                    {$language === "vi" ? "Tiến độ duyệt từng mạch:" : "Circuit approval progress:"}
+                  </span>
+                  <span class="font-bold text-amber-600 dark:text-amber-400">
+                    {provisionedForCurrentOrder.length} / {targetOrderTotalConns} {$language === "vi" ? "đã xong" : "completed"}
+                  </span>
+                </div>
+                <div class="grid grid-flow-col gap-1.5 auto-cols-fr">
+                  {#each Array(targetOrderTotalConns) as _, i}
+                    <div
+                      class="h-2 rounded-full transition-all duration-300 {i < provisionedForCurrentOrder.length
+                        ? 'bg-emerald-500'
+                        : i === provisionedForCurrentOrder.length
+                          ? 'bg-amber-500 ring-2 ring-amber-300 dark:ring-amber-900 animate-pulse'
+                          : 'bg-slate-200 dark:bg-slate-700'}"
+                      title={$language === "vi" ? `Mạch #${i + 1}` : `Circuit #${i + 1}`}
+                    ></div>
+                  {/each}
+                </div>
               </div>
             {/if}
           </div>
 
+          <!-- Previously Approved Connections for this Order -->
+          {#if provisionedForCurrentOrder.length > 0}
+            <div class="p-3 rounded-lg bg-emerald-50/50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/40 space-y-1.5">
+              <div class="text-[11px] font-semibold text-emerald-800 dark:text-emerald-300 flex items-center justify-between">
+                <span>{$language === "vi" ? `Các kết nối đã duyệt thành công (${provisionedForCurrentOrder.length}/${targetOrderTotalConns}):` : `Approved circuits (${provisionedForCurrentOrder.length}/${targetOrderTotalConns}):`}</span>
+                <span class="text-[10px] font-mono font-normal">Active</span>
+              </div>
+              <div class="space-y-1 max-h-28 overflow-y-auto pr-1">
+                {#each provisionedForCurrentOrder as c, idx}
+                  <div class="flex items-center justify-between text-[11px] font-mono p-1.5 rounded bg-white dark:bg-slate-900 border border-emerald-200/60 dark:border-emerald-800/40">
+                    <div class="flex items-center space-x-1.5">
+                      <span class="w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] flex items-center justify-center font-bold">✓</span>
+                      <span class="font-bold text-slate-900 dark:text-white">Mạch #{idx + 1}: {c.accountId}</span>
+                    </div>
+                    <div class="text-[10px] text-slate-500 dark:text-slate-400">
+                      Router: <span class="text-amber-600 dark:text-amber-400 font-semibold">{c.assignedDeviceSerial}</span> ({c.portNumber})
+                    </div>
+                  </div>
+                {/each}
+              </div>
+            </div>
+          {/if}
+
+          <!-- Current Circuit Assignment Section -->
+          <div class="p-3.5 rounded-lg bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/60 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                <span class="inline-flex items-center justify-center w-5 h-5 rounded-full bg-amber-600 text-white font-mono font-bold text-xs">
+                  {currentProvisioningIndex}
+                </span>
+                <span class="text-xs font-bold text-amber-900 dark:text-amber-200">
+                  {$language === "vi"
+                    ? `Duyệt Mạch #${currentProvisioningIndex}/${targetOrderTotalConns}`
+                    : `Approve Circuit #${currentProvisioningIndex}/${targetOrderTotalConns}`}
+                </span>
+              </div>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700">
+                Port: ETH-PORT-{currentProvisioningIndex}
+              </span>
+            </div>
+
+            <div class="text-[11px] text-slate-600 dark:text-slate-400">
+              {$language === "vi"
+                ? "Mỗi kết nối yêu cầu 1 thiết bị Modem / Router độc lập từ kho hàng Nexus."
+                : "Each connection requires 1 dedicated modem/router unit from inventory."}
+            </div>
+
+            <div>
+              <label
+                class="block text-xs font-mono font-semibold text-slate-700 dark:text-slate-300 mb-1"
+              >
+                {$language === "vi"
+                  ? (targetOrderTotalConns > 1
+                      ? `Chọn Router / Modem cho Mạch #${currentProvisioningIndex} *`
+                      : "Gán Modem / Router từ kho thiết bị *")
+                  : (targetOrderTotalConns > 1
+                      ? `Assign Router / Modem for Circuit #${currentProvisioningIndex} *`
+                      : "Assign Modem / Router from Stock *")}
+              </label>
+              {#if inStockEquipments.length > 0}
+                <select
+                  bind:value={selectedDeviceSerial}
+                  class="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                >
+                  {#each inStockEquipments as eq (eq.id)}
+                    <option value={eq.serialNumber}
+                      >{eq.serialNumber} — {eq.deviceModel} ({eq.macAddress})</option
+                    >
+                  {/each}
+                </select>
+                <div class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                  {$language === "vi"
+                    ? `Hiện có ${inStockEquipments.length} thiết bị sẵn sàng trong kho.`
+                    : `${inStockEquipments.length} hardware units available in stock.`}
+                </div>
+              {:else}
+                <div
+                  class="p-3 rounded bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs"
+                >
+                  {$language === "vi"
+                    ? "Không có thiết bị nào trong kho sẵn sàng. Vui lòng nhập thêm thiết bị."
+                    : "No hardware units currently marked as 'In Stock'. Please register or return equipment."}
+                </div>
+              {/if}
+            </div>
+          </div>
+
+          <!-- Actions -->
           <div
-            class="flex justify-end space-x-3 pt-3 border-t border-slate-200 dark:border-slate-800"
+            class="flex items-center justify-between pt-3 border-t border-slate-200 dark:border-slate-800"
           >
             <button
               type="button"
               onclick={() => (isProvisionModalOpen = false)}
               class="px-4 py-2 rounded-lg text-xs border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
             >
-              {$language === "vi" ? "Hủy bỏ" : "Cancel"}
+              {$language === "vi"
+                ? (provisionedForCurrentOrder.length > 0 ? "Tạm dừng & Đóng" : "Hủy bỏ")
+                : (provisionedForCurrentOrder.length > 0 ? "Pause & Close" : "Cancel")}
             </button>
             <button
               type="submit"
               disabled={!selectedDeviceSerial}
-              class="px-4 py-2 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition shadow disabled:opacity-50"
+              class="px-4 py-2 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition shadow disabled:opacity-50 flex items-center space-x-1.5"
             >
-              {$language === "vi"
-                ? "Xác nhận cấp & Kích hoạt"
-                : "Confirm Provisioning & Activate"}
+              {#if currentProvisioningIndex < targetOrderTotalConns}
+                <span>
+                  {$language === "vi"
+                    ? `Duyệt Mạch #${currentProvisioningIndex} & Tiếp tục (#${currentProvisioningIndex + 1}) ➔`
+                    : `Approve #${currentProvisioningIndex} & Next (#${currentProvisioningIndex + 1}) ➔`}
+                </span>
+              {:else}
+                <span>
+                  {$language === "vi"
+                    ? (targetOrderTotalConns > 1
+                        ? `Duyệt Mạch #${currentProvisioningIndex} & Hoàn tất Đơn hàng ✓`
+                        : "Xác nhận cấp & Kích hoạt ✓")
+                    : (targetOrderTotalConns > 1
+                        ? `Approve #${currentProvisioningIndex} & Complete Order ✓`
+                        : "Confirm Provisioning & Activate ✓")}
+                </span>
+              {/if}
             </button>
           </div>
         </form>

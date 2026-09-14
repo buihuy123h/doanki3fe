@@ -554,8 +554,8 @@ const INITIAL_ORDERS: Order[] = [
     cableDistanceMeters: 120,
     dpBoxCapacity: 'Port 8 Dedicated',
     signalLossDbm: -15.1,
-    bulkConnectionsCount: 12, // corporate order — 12 lines => 25% scheme discount
-    bulkDiscountPercent: 25,
+    bulkConnectionsCount: 50, // corporate order — 50 lines => 75% scheme discount
+    bulkDiscountPercent: 75,
     landlineFeasible: true,
   },
   {
@@ -581,6 +581,30 @@ const INITIAL_ORDERS: Order[] = [
     bulkDiscountPercent: 0,
     internetFeasible: false,
   },
+  {
+    id: 'B0000000008',
+    customerName: 'Công ty Cổ phần AlphaTech',
+    customerPhone: '+84 912 345 678',
+    customerEmail: 'contact@alphatech.vn',
+    installationAddress: 'Tòa nhà Keangnam, Cầu Giấy, Hà Nội',
+    idProofType: 'National ID Card',
+    idProofNumber: 'ID-VN-010999888777',
+    connectionType: 'Broadband',
+    planId: 'plan-bb-64',
+    planName: 'Broadband Unlimited 64 Kbps',
+    retailOutletCode: 'SH-01',
+    retailEmployeeName: 'David Chen',
+    createdAt: '2026-09-14 10:00',
+    status: 'Feasible',
+    assignedAccountId: 'B064-000000000010',
+    feasibilityNotes: 'Fiber termination box within 80m. Signal strength -15.0 dBm OK. Ready for multi-connection provisioning.',
+    cableDistanceMeters: 80,
+    dpBoxCapacity: 'Port 1 Available / DP-A01',
+    signalLossDbm: -15.0,
+    bulkConnectionsCount: 3,
+    bulkDiscountPercent: 0,
+    internetFeasible: true,
+  },
 ];
 
 const INITIAL_CONNECTIONS: Connection[] = [
@@ -600,6 +624,25 @@ const INITIAL_CONNECTIONS: Connection[] = [
     portNumber: 'VOIP-ETH-1',
     assignedDeviceSerial: 'NX-ATA-881920',
     assignedDeviceModel: 'Grandstream HT802 2-Port Analog VoIP Adapter',
+    installedDate: '2026-09-02',
+    lastUpdated: '2026-09-02 16:30',
+  },
+  {
+    accountId: 'T064-000000000008',
+    orderId: 'T0000000003',
+    customerName: 'Highline Consulting LLC',
+    customerPhone: '+1 (555) 777-8899',
+    customerEmail: 'office@highlineconsulting.com',
+    installationAddress: '55 Hudson Yards, Fl 18, New York, NY 10001',
+    connectionType: 'Landline',
+    planName: 'Landline STD - Monthly',
+    monthlyRental: 125,
+    securityDeposit: 250,
+    status: 'Active',
+    ipAddress: '198.51.100.43',
+    portNumber: 'VOIP-ETH-2',
+    assignedDeviceSerial: 'NX-HW-992813',
+    assignedDeviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
     installedDate: '2026-09-02',
     lastUpdated: '2026-09-02 16:30',
   },
@@ -724,6 +767,46 @@ const INITIAL_EQUIPMENTS: Equipment[] = [
     id: 'eq-06',
     serialNumber: 'NX-HW-992813',
     macAddress: 'A0:B1:C2:D3:E4:F5',
+    deviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
+    deviceType: 'Gigabit Router',
+    firmwareVersion: 'v3.2.4-BUILD-921',
+    status: 'In Service',
+    assignedAccountId: 'T064-000000000008',
+    assignedCustomerName: 'Highline Consulting LLC',
+    assignedTechnician: 'Marcus Ramirez',
+    installedDate: '2026-09-02',
+  },
+  {
+    id: 'eq-07',
+    serialNumber: 'NX-HW-992814',
+    macAddress: '12:34:56:78:9A:BC',
+    deviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
+    deviceType: 'Gigabit Router',
+    firmwareVersion: 'v3.2.4-BUILD-921',
+    status: 'In Stock',
+  },
+  {
+    id: 'eq-08',
+    serialNumber: 'NX-HW-992815',
+    macAddress: '23:45:67:89:AB:CD',
+    deviceModel: 'Huawei EchoLife HG8245H5 GPON ONT',
+    deviceType: 'Fiber ONT Modem',
+    firmwareVersion: 'V500R019C20SPC120',
+    status: 'In Stock',
+  },
+  {
+    id: 'eq-09',
+    serialNumber: 'NX-HW-992816',
+    macAddress: '34:56:78:9A:BC:DE',
+    deviceModel: 'Grandstream HT802 2-Port Analog VoIP Adapter',
+    deviceType: 'Analog Telephone Adapter',
+    firmwareVersion: '1.0.35.3',
+    status: 'In Stock',
+  },
+  {
+    id: 'eq-10',
+    serialNumber: 'NX-HW-992817',
+    macAddress: '45:67:89:AB:CD:EF',
     deviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
     deviceType: 'Gigabit Router',
     firmwareVersion: 'v3.2.4-BUILD-921',
@@ -864,7 +947,7 @@ function persist(key: string) {
 
 function createNexusStore() {
   // Bumped when the seed schema changes so stale localStorage is not reloaded.
-  const V = '_v2';
+  const V = '_v3';
   const currentRole = writable<RoleType>('admin');
   const dbConnected = writable<boolean>(false);
   const dbInfo = writable<{
@@ -997,7 +1080,7 @@ function createNexusStore() {
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    const bulkConnectionsCount = Math.max(1, Math.floor(orderData.bulkConnectionsCount || 1));
+    const bulkConnectionsCount = Math.max(1, Math.floor(orderData.bulkConnectionsCount ?? 50));
 
     const newOrder: Order = {
       ...orderData,
@@ -1100,10 +1183,20 @@ function createNexusStore() {
     const monthlyRate = plan ? plan.monthlyRental : 100;
     const deposit = plan ? plan.securityDeposit : 250;
 
-    // Keep the Account ID the customer already signs in with; only mint one if missing.
-    const newAccountId =
-      order.assignedAccountId ||
-      generateAccountId(order.connectionType, cityCodeForOrder(order), nextAccountIdSerial());
+    const existingForOrder = get(connections).filter((c) => c.orderId === orderId);
+    const nextIndex = existingForOrder.length + 1;
+    const totalRequired = Math.max(1, order.bulkConnectionsCount || 1);
+
+    // If order.assignedAccountId exists and hasn't been taken by an existing connection yet, use it for Line #1;
+    // otherwise generate a brand new unique Account ID for each subsequent connection.
+    const isFirstIdAvailable =
+      order.assignedAccountId &&
+      !get(connections).some((c) => c.accountId === order.assignedAccountId);
+
+    const newAccountId = isFirstIdAvailable
+      ? order.assignedAccountId!
+      : generateAccountId(order.connectionType, cityCodeForOrder(order), nextAccountIdSerial());
+
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -1123,21 +1216,31 @@ function createNexusStore() {
       securityDeposit: deposit,
       status: 'Active',
       ipAddress: `198.51.${Math.floor(10 + Math.random() * 90)}.${Math.floor(2 + Math.random() * 250)}`,
-      portNumber: `ETH-PORT-${Math.floor(1 + Math.random() * 8)}`,
+      portNumber: `ETH-PORT-${nextIndex}`,
       assignedDeviceSerial,
       assignedDeviceModel: device?.deviceModel || 'Nexus Standard CPE',
       installedDate: dateStr,
       lastUpdated: `${dateStr} ${timeStr}`,
     };
 
-    // Mark order as fulfilled
+    // Mark order as fulfilled only when ALL required bulk connections have been provisioned!
+    const isAllFulfilled = nextIndex >= totalRequired;
+
     orders.update((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: 'Connection Provided', assignedAccountId: newAccountId } : o))
+      prev.map((o) =>
+        o.id === orderId
+          ? {
+              ...o,
+              status: isAllFulfilled ? 'Connection Provided' : o.status,
+              assignedAccountId: o.assignedAccountId || newAccountId,
+            }
+          : o
+      )
     );
 
     connections.update((prev) => [newConnection, ...prev]);
 
-    // Bind equipment to the new subscriber
+    // Bind equipment to this specific connection (1 connection = 1 router)
     if (assignedDeviceSerial) {
       equipments.update((prev) =>
         prev.map((eq) =>
@@ -1146,7 +1249,9 @@ function createNexusStore() {
                 ...eq,
                 status: 'In Service',
                 assignedAccountId: newAccountId,
-                assignedCustomerName: order.customerName,
+                assignedCustomerName: totalRequired > 1
+                  ? `${order.customerName} (Line #${nextIndex})`
+                  : order.customerName,
                 installedDate: dateStr,
               }
             : eq
