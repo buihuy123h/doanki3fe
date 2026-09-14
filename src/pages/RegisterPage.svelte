@@ -615,8 +615,6 @@
                     <div class="mt-0.5">{selectedShop.operatingHours} · {selectedShop.phone}</div>
                   </div>
                 </div>
-              {:else}
-                <p class="text-[11px] text-[#537292] dark:text-slate-400">{$t.registrationPage.branchHint}</p>
               {/if}
 
               <!-- Order summary -->
@@ -691,18 +689,6 @@
                 <span>{$t.auth.loginLink}</span>
                 <ArrowRight class="h-3 w-3" />
               </button>
-            </div>
-
-            <!-- Assurance Badges -->
-            <div class="mt-4 pt-4 border-t border-[#CCE4F7]/60 dark:border-slate-800/60 grid grid-cols-2 gap-2 text-[11px] text-[#537292] dark:text-slate-400">
-              <div class="flex items-center space-x-1.5">
-                <CheckCircle2 class="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                <span>{$t.auth.freeRegister}</span>
-              </div>
-              <div class="flex items-center space-x-1.5">
-                <Sparkles class="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                <span>{$t.auth.instantActive}</span>
-              </div>
             </div>
           </div>
 

@@ -26,9 +26,20 @@
     Plus,
     Settings,
     X,
+    ChevronDown,
+    ChevronUp,
+    Filter,
+    AlertTriangle,
+    XCircle,
+    Server,
+    HardDrive,
+    Activity,
+    RefreshCw,
   } from "lucide-svelte";
   import type {
     ConnectionType,
+    ConnectionStatus,
+    Connection,
     Order,
     Bill,
     PaymentRecord,
@@ -100,29 +111,137 @@
   // Success Modal for newly generated Order
   let placedOrder = $state<Order | null>(null);
 
-  // STATE: ORDER TRACKING (11-char Order ID) — advanced search fields
-  let trackingSearchQuery = $state("D0000000001");
-  let advOrderName = $state("");
-  let advOrderType = $state<"All" | ConnectionType>("All");
-  let advOrderPhone = $state("");
-  let advOrderFrom = $state("");
-  let advOrderTo = $state("");
-  let trackedOrder = $state<Order | null>(
-    $orders.find((o) => o.id === "D0000000001") || $orders[0] || null,
+  // STATE: ORDER TRACKING (11-char Order ID) — matching Technical Registry pattern
+  let orderSearchQuery = $state("");
+  let orderStatusFilter = $state<"All" | Order["status"]>("All");
+  let orderTypeFilter = $state<"All" | ConnectionType>("All");
+  let expandedOrderId = $state<string | null>("D0000000001");
+
+  const filteredTrackedOrders = $derived(
+    $orders.filter((o) => {
+      const q = orderSearchQuery.trim().toLowerCase();
+      const matchesSearch =
+        !q ||
+        o.id.toLowerCase().includes(q) ||
+        o.customerName.toLowerCase().includes(q) ||
+        o.customerPhone.replace(/\D/g, "").includes(q.replace(/\D/g, "")) ||
+        o.customerEmail.toLowerCase().includes(q) ||
+        o.installationAddress.toLowerCase().includes(q) ||
+        (o.assignedAccountId && o.assignedAccountId.toLowerCase().includes(q));
+      const matchesStatus =
+        orderStatusFilter === "All" || o.status === orderStatusFilter;
+      const matchesType =
+        orderTypeFilter === "All" || o.connectionType === orderTypeFilter;
+      return matchesSearch && matchesStatus && matchesType;
+    }),
   );
 
-  // STATE: CONNECTION DETAILS (16-char Account ID) — advanced search fields
-  let accountSearchQuery = $state("T064-000000000001");
-  let advConnName = $state("");
-  let advConnType = $state<"All" | ConnectionType>("All");
-  let advConnPhone = $state("");
-  let advConnFrom = $state("");
-  let advConnTo = $state("");
-  let trackedConnection = $state(
-    $connections.find((c) => c.accountId === "T064-000000000001") ||
-      $connections[0] ||
-      null,
+  const toggleOrderDropdown = (orderId: string) => {
+    if (expandedOrderId === orderId) {
+      expandedOrderId = null;
+    } else {
+      expandedOrderId = orderId;
+    }
+  };
+
+  const handleQuickTrackOrder = () => {
+    const q = orderSearchQuery.trim().toLowerCase();
+    if (!q) {
+      toast.info(
+        $language === "vi"
+          ? "Vui lòng nhập Mã đơn hoặc tên khách hàng."
+          : "Please enter an Order ID or customer name.",
+      );
+      return;
+    }
+    const found = $orders.find(
+      (o) =>
+        o.id.toLowerCase().includes(q) ||
+        o.customerName.toLowerCase().includes(q),
+    );
+    if (found) {
+      expandedOrderId = found.id;
+      toast.success(
+        $language === "vi"
+          ? `Đã mở chi tiết đơn hàng #${found.id}`
+          : `Opened details for Order #${found.id}`,
+      );
+    } else {
+      toast.error(
+        $language === "vi"
+          ? "Không tìm thấy đơn hàng phù hợp."
+          : "Order not found in registry.",
+      );
+    }
+  };
+
+  // STATE: CONNECTION DETAILS (16-char Account ID) — matching Technical Registry pattern
+  let connSearchQuery = $state("");
+  let connStatusFilter = $state<"All" | string>("All");
+  let connTypeFilter = $state<"All" | string>("All");
+  let expandedConnAccountId = $state<string | null>("T064-000000000001");
+
+  const filteredTrackedConnections = $derived(
+    $connections.filter((c) => {
+      const q = connSearchQuery.trim().toLowerCase();
+      const cleanQ = q.replace(/-/g, "");
+      const matchesSearch =
+        !q ||
+        c.accountId.toLowerCase().includes(q) ||
+        c.accountId.replace(/-/g, "").toLowerCase().includes(cleanQ) ||
+        c.customerName.toLowerCase().includes(q) ||
+        c.customerPhone.replace(/\D/g, "").includes(q.replace(/\D/g, "")) ||
+        c.customerEmail.toLowerCase().includes(q) ||
+        c.installationAddress.toLowerCase().includes(q) ||
+        (c.portNumber && c.portNumber.toLowerCase().includes(q)) ||
+        (c.assignedDeviceSerial && c.assignedDeviceSerial.toLowerCase().includes(q)) ||
+        (c.ipAddress && c.ipAddress.toLowerCase().includes(q));
+      const matchesStatus =
+        connStatusFilter === "All" || c.status === connStatusFilter;
+      const matchesType =
+        connTypeFilter === "All" || c.connectionType === connTypeFilter;
+      return matchesSearch && matchesStatus && matchesType;
+    }),
   );
+
+  const toggleConnDropdown = (accountId: string) => {
+    if (expandedConnAccountId === accountId) {
+      expandedConnAccountId = null;
+    } else {
+      expandedConnAccountId = accountId;
+    }
+  };
+
+  const handleQuickTrackConnection = () => {
+    const q = connSearchQuery.trim().replace(/-/g, "").toLowerCase();
+    if (!q) {
+      toast.info(
+        $language === "vi"
+          ? "Vui lòng nhập Mã tài khoản hoặc tên khách hàng."
+          : "Please enter an Account ID or customer name.",
+      );
+      return;
+    }
+    const found = $connections.find(
+      (c) =>
+        c.accountId.replace(/-/g, "").toLowerCase().includes(q) ||
+        c.customerName.toLowerCase().includes(connSearchQuery.trim().toLowerCase()),
+    );
+    if (found) {
+      expandedConnAccountId = found.accountId;
+      toast.success(
+        $language === "vi"
+          ? `Đã mở chi tiết hồ sơ tài khoản #${found.accountId}`
+          : `Retrieved connection profile #${found.accountId}`,
+      );
+    } else {
+      toast.error(
+        $language === "vi"
+          ? "Không tìm thấy Mã tài khoản trong hệ thống."
+          : "Account ID not found in connection registry.",
+      );
+    }
+  };
 
   // STATE: PAYMENT RECORDS SEARCH
   let paymentAccountQuery = $state("");
@@ -172,59 +291,29 @@
     }
   };
 
-  // Advanced search results
-  const advOrderResults = $derived(
-    $orders.filter((o) => {
-      const q = trackingSearchQuery.trim().toUpperCase();
-      if (q && !o.id.toUpperCase().includes(q)) return false;
-      if (
-        advOrderName.trim() &&
-        !o.customerName
-          .toLowerCase()
-          .includes(advOrderName.trim().toLowerCase())
-      )
-        return false;
-      if (advOrderType !== "All" && o.connectionType !== advOrderType)
-        return false;
-      if (
-        advOrderPhone.trim() &&
-        !o.customerPhone
-          .replace(/\D/g, "")
-          .includes(advOrderPhone.replace(/\D/g, ""))
-      )
-        return false;
-      const day = o.createdAt.slice(0, 10);
-      if (advOrderFrom && day < advOrderFrom) return false;
-      if (advOrderTo && day > advOrderTo) return false;
-      return true;
-    }),
+  // Due amount and bills helpers for connection search (Spec §9)
+  const getConnectionDueAmount = (accId: string): number => {
+    if (!accId) return 0;
+    const cleanId = accId.replace(/-/g, "").toUpperCase();
+    return $bills
+      .filter((b) => b.accountId.replace(/-/g, "").toUpperCase() === cleanId)
+      .reduce((sum, b) => sum + (b.dueAmount || 0), 0);
+  };
+
+  const totalDueAmountAllConnections = $derived(
+    $connections.reduce(
+      (sum, c) => sum + getConnectionDueAmount(c.accountId),
+      0,
+    ),
   );
 
-  const advConnResults = $derived(
-    $connections.filter((c) => {
-      const q = accountSearchQuery.trim().replace(/-/g, "").toUpperCase();
-      if (q && !c.accountId.replace(/-/g, "").toUpperCase().includes(q))
-        return false;
-      if (
-        advConnName.trim() &&
-        !c.customerName.toLowerCase().includes(advConnName.trim().toLowerCase())
-      )
-        return false;
-      if (advConnType !== "All" && c.connectionType !== advConnType)
-        return false;
-      if (
-        advConnPhone.trim() &&
-        !c.customerPhone
-          .replace(/\D/g, "")
-          .includes(advConnPhone.replace(/\D/g, ""))
-      )
-        return false;
-      const day = (c.installedDate || "").slice(0, 10);
-      if (advConnFrom && day < advConnFrom) return false;
-      if (advConnTo && day > advConnTo) return false;
-      return true;
-    }),
-  );
+  const getBillsForConnection = (accId: string): Bill[] => {
+    if (!accId) return [];
+    const cleanId = accId.replace(/-/g, "").toUpperCase();
+    return $bills.filter(
+      (b) => b.accountId.replace(/-/g, "").toUpperCase() === cleanId,
+    );
+  };
 
   // Filter available plans according to selected Connection Type
   const availablePlans = $derived(
@@ -302,10 +391,11 @@
 
   // ORDER TRACKING SEARCH HANDLER
   const handleSearchOrder = (idToSearch?: string) => {
-    const targetId = (idToSearch || trackingSearchQuery).trim().toUpperCase();
+    const targetId = (idToSearch || orderSearchQuery).trim().toUpperCase();
     const found = $orders.find((o) => o.id.toUpperCase() === targetId);
     if (found) {
-      trackedOrder = found;
+      orderSearchQuery = found.id;
+      expandedOrderId = found.id;
       toast.success(`Found Order ${found.id}`);
     } else {
       toast.error(
@@ -316,12 +406,14 @@
 
   // CONNECTION DETAILS SEARCH HANDLER
   const handleSearchConnection = (idToSearch?: string) => {
-    const targetId = (idToSearch || accountSearchQuery).trim();
+    const targetId = (idToSearch || connSearchQuery).trim();
+    const cleanTarget = targetId.replace(/-/g, "").toUpperCase();
     const found = $connections.find(
-      (c) => c.accountId.replace(/-/g, "") === targetId.replace(/-/g, ""),
+      (c) => c.accountId.replace(/-/g, "").toUpperCase() === cleanTarget,
     );
     if (found) {
-      trackedConnection = found;
+      connSearchQuery = found.accountId;
+      expandedConnAccountId = found.accountId;
       toast.success(`Retrieved Account ${found.accountId}`);
     } else {
       toast.error(`No connection found for Account ID "${targetId}"`);
@@ -374,8 +466,8 @@
     const id = placedOrder!.id;
     placedOrder = null;
     activeTab = "order-tracking";
-    trackingSearchQuery = id;
-    handleSearchOrder(id);
+    orderSearchQuery = id;
+    expandedOrderId = id;
   };
 
   const connectionTypeCards: {
@@ -949,36 +1041,6 @@
             </div>
           {/if}
         </div>
-
-        <!-- Retail Quick Fill Demo Helper -->
-        <div
-          class="rounded-xl border border-dashed border-emerald-500/40 bg-emerald-500/5 p-4 text-xs space-y-2"
-        >
-          <div
-            class="flex items-center space-x-2 font-semibold text-emerald-700 dark:text-emerald-400"
-          >
-            <Sparkles class="h-4 w-4" />
-            <span
-              >{$language === "vi"
-                ? "Điền mẫu nhanh thử nghiệm"
-                : "Retail Fast-Fill Demo"}</span
-            >
-          </div>
-          <p class="text-slate-600 dark:text-slate-400">
-            {$language === "vi"
-              ? "Tự động điền thông tin khách hàng mẫu để kiểm thử nhanh quy trình bán lẻ:"
-              : "Quickly populate walk-in customer details to speed up retail testing:"}
-          </p>
-          <button
-            type="button"
-            onclick={fillDemoCustomer}
-            class="w-full py-1.5 px-3 rounded bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-300 font-medium transition text-center"
-          >
-            {$language === "vi"
-              ? "Điền dữ liệu khách hàng mẫu"
-              : "Fill Sample Customer Data"}
-          </button>
-        </div>
       </div>
     </div>
   {/if}
@@ -986,652 +1048,1194 @@
   <!-- TAB 2: ORDER TRACKING -->
   {#if activeTab === "order-tracking"}
     <div class="space-y-6">
-      <!-- Advanced search: ID / name / type / date period / contact number -->
-      <div
-        class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
-      >
-        <label
-          class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
-        >
-          {$language === "vi"
-            ? "Tra cứu đơn hàng nâng cao — Mã đơn 11 ký tự (D/B/T + sê-ri), tên khách hàng, loại kết nối, khoảng thời gian, số điện thoại"
-            : "Advanced order search — 11-char Order ID (D/B/T + serial), name, type, date period, phone"}
-        </label>
+      <!-- 1. KPI Summary Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <!-- Total Orders -->
+        <div class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between">
+            <span>{$language === "vi" ? "Tổng số đơn hàng" : "Total Orders"}</span>
+            <ShoppingBag class="h-3.5 w-3.5 text-slate-400" />
+          </div>
+          <div class="text-2xl font-bold font-mono text-slate-900 dark:text-white mt-1.5">
+            {$orders.length}
+            <span class="text-xs font-normal text-slate-400 ml-1">{$language === "vi" ? "đơn" : "orders"}</span>
+          </div>
+          <div class="text-[10px] text-slate-500 mt-1">
+            {$language === "vi" ? "Cập nhật thời gian thực" : "Real-time sync"}
+          </div>
+        </div>
 
-        <div class="flex gap-2">
+        <!-- Connection Provided -->
+        <div class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/40 shadow-sm">
+          <div class="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center justify-between">
+            <span>{$language === "vi" ? "Đã cấp kết nối" : "Provided"}</span>
+            <CheckCircle2 class="h-3.5 w-3.5 text-emerald-500" />
+          </div>
+          <div class="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1.5">
+            {$orders.filter((o) => o.status === "Connection Provided").length}
+            <span class="text-xs font-normal text-emerald-600/70 ml-1">{$language === "vi" ? "hoàn tất" : "active"}</span>
+          </div>
+          <div class="text-[10px] text-emerald-600/80 dark:text-emerald-500 mt-1">
+            {$language === "vi" ? "Đã phát hành Account ID" : "Account ID issued"}
+          </div>
+        </div>
+
+        <!-- Feasible -->
+        <div class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-sky-200 dark:border-sky-900/40 shadow-sm">
+          <div class="text-[11px] font-mono text-sky-600 dark:text-sky-400 uppercase tracking-wider flex items-center justify-between">
+            <span>{$language === "vi" ? "Khảo sát khả thi" : "Feasible"}</span>
+            <Activity class="h-3.5 w-3.5 text-sky-500" />
+          </div>
+          <div class="text-2xl font-bold font-mono text-sky-600 dark:text-sky-400 mt-1.5">
+            {$orders.filter((o) => o.status === "Feasible").length}
+            <span class="text-xs font-normal text-sky-600/70 ml-1">{$language === "vi" ? "khả thi" : "ready"}</span>
+          </div>
+          <div class="text-[10px] text-sky-600/80 dark:text-sky-500 mt-1">
+            {$language === "vi" ? "Chờ kỹ thuật đấu nối" : "Ready for dispatch"}
+          </div>
+        </div>
+
+        <!-- Pending -->
+        <div class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/40 shadow-sm">
+          <div class="text-[11px] font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center justify-between">
+            <span>{$language === "vi" ? "Chờ xử lý" : "Pending"}</span>
+            <Clock class="h-3.5 w-3.5 text-amber-500" />
+          </div>
+          <div class="text-2xl font-bold font-mono text-amber-700 dark:text-amber-400 mt-1.5">
+            {$orders.filter((o) => o.status === "Pending").length}
+            <span class="text-xs font-normal text-amber-600/70 ml-1">{$language === "vi" ? "chờ duyệt" : "queued"}</span>
+          </div>
+          <div class="text-[10px] text-amber-600/80 dark:text-amber-500 mt-1">
+            {$language === "vi" ? "Chờ phân tích đo kiểm" : "Awaiting telemetry"}
+          </div>
+        </div>
+
+        <!-- Not Feasible -->
+        <div class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/40 shadow-sm col-span-2 sm:col-span-1">
+          <div class="text-[11px] font-mono text-rose-600 dark:text-rose-400 uppercase tracking-wider flex items-center justify-between">
+            <span>{$language === "vi" ? "Không khả thi" : "Not Feasible"}</span>
+            <XCircle class="h-3.5 w-3.5 text-rose-500" />
+          </div>
+          <div class="text-2xl font-bold font-mono text-rose-700 dark:text-rose-400 mt-1.5">
+            {$orders.filter((o) => o.status === "Not Feasible").length}
+            <span class="text-xs font-normal text-rose-600/70 ml-1">{$language === "vi" ? "từ chối" : "rejected"}</span>
+          </div>
+          <div class="text-[10px] text-rose-600/80 dark:text-rose-500 mt-1">
+            {$language === "vi" ? "Vượt cự ly / Hết cổng" : "Distance / Out of ports"}
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Search & Filter Bar -->
+      <div class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div class="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          <!-- Search input -->
           <div class="relative flex-1">
-            <Search class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            <Search class="absolute left-3.5 top-3 h-4 w-4 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
-              maxlength="11"
               placeholder={$language === "vi"
-                ? "Mã đơn ví dụ D0000000001"
-                : "Order ID e.g. D0000000001"}
-              bind:value={trackingSearchQuery}
-              oninput={(e) =>
-                (trackingSearchQuery = (
-                  e.currentTarget as HTMLInputElement
-                ).value.toUpperCase())}
-              onkeydown={(e) => e.key === "Enter" && handleSearchOrder()}
-              class="w-full pl-9 pr-4 py-2.5 text-base font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 uppercase tracking-widest"
+                ? "Tra cứu theo Mã đơn hàng (11 ký tự), tên khách hàng, SĐT, email, địa chỉ..."
+                : "Search by 11-char Order ID, customer name, phone, email, address..."}
+              bind:value={orderSearchQuery}
+              class="w-full pl-10 pr-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 font-mono"
             />
           </div>
-          <button
-            onclick={() => handleSearchOrder()}
-            class="px-5 py-2.5 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow"
-          >
-            {$language === "vi" ? "Tra cứu đơn" : "Track Order"}
-          </button>
-        </div>
 
-        <div
-          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs"
-        >
-          <input
-            type="text"
-            placeholder={$language === "vi"
-              ? "Tên trên đơn hàng"
-              : "Name on order"}
-            bind:value={advOrderName}
-            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          <select
-            bind:value={advOrderType}
-            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="All"
-              >{$language === "vi" ? "Tất cả loại kết nối" : "Any type"}</option
-            >
-            <option value="Broadband"
-              >{$language === "vi"
-                ? "Cáp quang (Broadband)"
-                : "Broadband"}</option
-            >
-            <option value="Dial-Up"
-              >{$language === "vi" ? "Quay số (Dial-Up)" : "Dial-Up"}</option
-            >
-            <option value="Landline"
-              >{$language === "vi"
-                ? "Cố định (Landline)"
-                : "Landline (Telephone)"}</option
-            >
-          </select>
-          <input
-            type="text"
-            placeholder={$language === "vi"
-              ? "Số điện thoại"
-              : "Contact number"}
-            bind:value={advOrderPhone}
-            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          <input
-            type="date"
-            bind:value={advOrderFrom}
-            title={$language === "vi" ? "Đăng ký từ ngày" : "Applied from"}
-            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          <input
-            type="date"
-            bind:value={advOrderTo}
-            title={$language === "vi" ? "Đến ngày" : "Applied to"}
-            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-
-        <div
-          class="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500"
-        >
-          <span
-            >{$language === "vi"
-              ? `Kết quả (${advOrderResults.length}):`
-              : `Results (${advOrderResults.length}):`}</span
-          >
-          {#each advOrderResults.slice(0, 12) as o (o.id)}
+          <div class="flex items-center gap-2">
             <button
-              onclick={() => (trackedOrder = o)}
-              class="font-mono text-emerald-600 dark:text-emerald-400 hover:underline bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/40"
+              onclick={handleQuickTrackOrder}
+              class="px-4 py-2.5 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow flex items-center justify-center space-x-1.5 whitespace-nowrap"
             >
-              {o.id} · {o.customerName.split(" ")[0]} ({$language === "vi"
-                ? o.status === "Connection Provided"
-                  ? "Đã cấp kết nối"
-                  : o.status === "Feasible"
-                    ? "Khả thi"
-                    : o.status === "Not Feasible"
-                      ? "Không khả thi"
-                      : "Chờ xử lý"
-                : o.status})
+              <ShoppingBag class="h-4 w-4" />
+              <span>{$language === "vi" ? "Tra cứu & Mở chi tiết" : "Track & Open Details"}</span>
             </button>
-          {:else}
-            <span class="italic"
-              >{$language === "vi"
-                ? "Không có đơn hàng phù hợp."
-                : "No matching orders."}</span
+          </div>
+        </div>
+
+        <!-- Filter rows: Status & Connection Type -->
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
+          <!-- Status Filter Pills (Horizontal row) -->
+          <div class="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-1 max-w-full">
+            <button
+              onclick={() => (orderStatusFilter = "All")}
+              class="px-2.5 py-1 text-xs font-medium rounded-lg transition {orderStatusFilter === 'All'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}"
             >
+              {$language === "vi" ? "Tất cả" : "All"} ({$orders.length})
+            </button>
+            <button
+              onclick={() => (orderStatusFilter = "Connection Provided")}
+              class="px-2.5 py-1 text-xs font-medium rounded-lg transition {orderStatusFilter === 'Connection Provided'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}"
+            >
+              {$language === "vi" ? "Đã cấp kết nối" : "Provided"} ({$orders.filter((o) => o.status === "Connection Provided").length})
+            </button>
+            <button
+              onclick={() => (orderStatusFilter = "Feasible")}
+              class="px-2.5 py-1 text-xs font-medium rounded-lg transition {orderStatusFilter === 'Feasible'
+                ? 'bg-sky-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}"
+            >
+              {$language === "vi" ? "Khảo sát khả thi" : "Feasible"} ({$orders.filter((o) => o.status === "Feasible").length})
+            </button>
+            <button
+              onclick={() => (orderStatusFilter = "Pending")}
+              class="px-2.5 py-1 text-xs font-medium rounded-lg transition {orderStatusFilter === 'Pending'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}"
+            >
+              {$language === "vi" ? "Chờ xử lý" : "Pending"} ({$orders.filter((o) => o.status === "Pending").length})
+            </button>
+            <button
+              onclick={() => (orderStatusFilter = "Not Feasible")}
+              class="px-2.5 py-1 text-xs font-medium rounded-lg transition {orderStatusFilter === 'Not Feasible'
+                ? 'bg-rose-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}"
+            >
+              {$language === "vi" ? "Không khả thi" : "Not Feasible"} ({$orders.filter((o) => o.status === "Not Feasible").length})
+            </button>
+          </div>
+
+          <!-- Connection Type Filter -->
+          <div class="flex items-center space-x-2 text-xs">
+            <span class="text-slate-500 dark:text-slate-400 whitespace-nowrap">
+              {$language === "vi" ? "Loại kết nối:" : "Connection Type:"}
+            </span>
+            <select
+              bind:value={orderTypeFilter}
+              class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs"
+            >
+              <option value="All">{$language === "vi" ? "Tất cả loại kết nối" : "All Types"}</option>
+              <option value="Broadband">Broadband (Cáp quang)</option>
+              <option value="Landline">Landline (Cố định)</option>
+              <option value="Dial-Up">Dial-Up (Quay số)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Fast Pick Tags -->
+        <div class="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500 dark:text-slate-400 font-mono">
+          <span class="text-[11px]">{$language === "vi" ? "Mã đơn hàng mới nhất:" : "Latest Orders:"}</span>
+          {#each $orders.slice(0, 8) as o (o.id)}
+            <button
+              onclick={() => {
+                orderSearchQuery = o.id;
+                expandedOrderId = o.id;
+              }}
+              class="px-2 py-0.5 rounded border transition font-semibold text-[11px] {expandedOrderId === o.id
+                ? 'bg-emerald-100 dark:bg-emerald-950/60 border-emerald-400 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-400'
+                : 'bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-emerald-400'}"
+            >
+              {o.id}
+            </button>
           {/each}
         </div>
       </div>
 
-      <!-- Visual Tracking Timeline & Details -->
-      {#if trackedOrder}
-        <div
-          class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-6"
-        >
-          <!-- Header with status badge -->
-          <div
-            class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4"
-          >
-            <div>
-              <div class="flex items-center space-x-3">
-                <h2
-                  class="text-xl font-bold font-mono text-slate-900 dark:text-white"
-                >
-                  {$language === "vi"
-                    ? "Đơn hàng #"
-                    : "Order #"}{trackedOrder.id}
-                </h2>
-                <span
-                  class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold {trackedOrder.status ===
-                  'Connection Provided'
-                    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
-                    : trackedOrder.status === 'Feasible'
-                      ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300'
-                      : trackedOrder.status === 'Not Feasible'
-                        ? 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300'
-                        : 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'}"
-                >
-                  {$language === "vi"
-                    ? trackedOrder.status === "Connection Provided"
-                      ? "Đã cấp kết nối"
-                      : trackedOrder.status === "Feasible"
-                        ? "Khả thi"
-                        : trackedOrder.status === "Not Feasible"
-                          ? "Không khả thi"
-                          : "Chờ xử lý"
-                    : trackedOrder.status}
-                </span>
-              </div>
-              <p class="text-xs text-slate-500 mt-1">
-                {$language === "vi"
-                  ? `Đăng ký lúc ${trackedOrder.createdAt} bởi ${trackedOrder.retailEmployeeName} (${trackedOrder.retailOutletCode})`
-                  : `Submitted at ${trackedOrder.createdAt} by ${trackedOrder.retailEmployeeName} (${trackedOrder.retailOutletCode})`}
-              </p>
-            </div>
+      <!-- 3. Orders Table List with Dropdown Accordion -->
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-950/50">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+              <ShoppingBag class="h-5 w-5 text-emerald-600" />
+              <span>{$language === "vi" ? "Danh sách theo dõi tiến độ đơn hàng" : "Order Tracking & Fulfillment Registry"}</span>
+              <span class="ml-2 px-2.5 py-0.5 text-xs font-mono font-bold rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                {filteredTrackedOrders.length} {$language === "vi" ? "đơn hàng" : "orders"}
+              </span>
+            </h3>
+          </div>
 
+          {#if expandedOrderId}
             <button
-              onclick={() => copyToClipboard(trackedOrder!.id, "Order ID")}
-              class="inline-flex items-center space-x-1.5 text-xs text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg"
+              onclick={() => (expandedOrderId = null)}
+              class="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 transition bg-white dark:bg-slate-900 flex items-center gap-1 self-start sm:self-auto"
             >
-              <Copy class="h-3.5 w-3.5" />
-              <span>{$language === "vi" ? "Sao chép mã đơn" : "Copy ID"}</span>
+              <X class="h-3.5 w-3.5" />
+              <span>{$language === "vi" ? "Thu gọn tất cả chi tiết" : "Collapse All Details"}</span>
+            </button>
+          {/if}
+        </div>
+
+        {#if filteredTrackedOrders.length === 0}
+          <div class="py-16 text-center space-y-3">
+            <ShoppingBag class="h-10 w-10 text-slate-400 mx-auto opacity-50" />
+            <div class="text-sm font-semibold text-slate-700 dark:text-slate-300 font-mono">
+              {$language === "vi" ? "Không tìm thấy đơn hàng nào khớp với bộ lọc." : "No orders match the current filter criteria."}
+            </div>
+            <button
+              onclick={() => {
+                orderSearchQuery = "";
+                orderStatusFilter = "All";
+                orderTypeFilter = "All";
+              }}
+              class="px-4 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
+            >
+              {$language === "vi" ? "Đặt lại bộ lọc" : "Reset Filters"}
             </button>
           </div>
-
-          <!-- 4-Stage Visual Progress Stepper -->
-          <div class="py-4">
-            <div
-              class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-6"
-            >
-              {$language === "vi"
-                ? "Quy trình xử lý đơn hàng"
-                : "Fulfillment Lifecycle Stepper"}
-            </div>
-
-            <div class="grid grid-cols-4 gap-2 relative">
-              {#each stepperStages as st (st.step)}
-                {@const stageIdx = getStageIndex(trackedOrder!.status)}
-                {@const isComplete = stageIdx >= st.step}
-                {@const isFailed =
-                  trackedOrder!.status === "Not Feasible" && st.step >= 2}
-                <div class="text-center space-y-2">
-                  <div
-                    class="h-10 w-10 mx-auto rounded-full flex items-center justify-center font-bold text-xs transition-colors {isFailed
-                      ? 'bg-rose-500 text-white'
-                      : isComplete
-                        ? 'bg-emerald-600 text-white'
-                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}"
+        {:else}
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm border-collapse">
+              <thead class="bg-slate-50 dark:bg-slate-950/80 text-[11px] font-mono text-slate-600 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "MÃ ĐƠN HÀNG" : "ORDER ID"}</th>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "KHÁCH HÀNG & ĐỊA CHỈ" : "CUSTOMER & ADDRESS"}</th>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "LOẠI KẾT NỐI & GÓI CƯỚC" : "CONNECTION & PLAN"}</th>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "ĐIỆN THOẠI & XÁC MINH" : "PHONE & ID PROOF"}</th>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "TRẠNG THÁI TIẾN ĐỘ" : "FULFILLMENT STATUS"}</th>
+                  <th class="px-4 py-3.5 text-right">{$language === "vi" ? "THAO TÁC" : "ACTIONS"}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60 font-sans">
+                {#each filteredTrackedOrders as o (o.id)}
+                  {@const isExpanded = expandedOrderId === o.id}
+                  <!-- Main Table Row -->
+                  <tr
+                    class="transition-colors hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 {isExpanded
+                      ? 'bg-emerald-50/60 dark:bg-emerald-950/30'
+                      : ''}"
                   >
-                    {#if isFailed}
-                      !
-                    {:else if isComplete}
-                      <CheckCircle2 class="h-5 w-5" />
-                    {:else}
-                      {st.step}
-                    {/if}
-                  </div>
-                  <div>
-                    <div
-                      class="text-xs font-bold text-slate-900 dark:text-white"
-                    >
-                      {$language === "vi" ? st.labelVi : st.label}
-                    </div>
-                    <div class="text-[11px] text-slate-500">
-                      {$language === "vi" ? st.subVi : st.sub}
-                    </div>
-                  </div>
-                </div>
-              {/each}
-            </div>
+                    <!-- Col 1: Order ID -->
+                    <td class="px-4 py-4 align-top">
+                      <div class="flex items-center space-x-1.5">
+                        <span class="font-mono font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
+                          {o.id}
+                        </span>
+                        <button
+                          onclick={() => copyToClipboard(o.id, "Order ID")}
+                          class="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition"
+                          title={$language === "vi" ? "Sao chép mã đơn" : "Copy Order ID"}
+                        >
+                          <Copy class="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1">
+                        {o.createdAt}
+                      </div>
+                    </td>
+
+                    <!-- Col 2: Customer & Address -->
+                    <td class="px-4 py-4 align-top">
+                      <div class="font-semibold text-slate-900 dark:text-white">
+                        {o.customerName}
+                      </div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">
+                        {o.installationAddress}
+                      </div>
+                    </td>
+
+                    <!-- Col 3: Connection & Plan -->
+                    <td class="px-4 py-4 align-top">
+                      <div class="flex items-center space-x-1.5">
+                        {#if o.connectionType === "Broadband"}
+                          <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                            <Wifi class="h-3 w-3" />
+                            <span>Broadband</span>
+                          </span>
+                        {:else if o.connectionType === "Landline"}
+                          <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                            <Phone class="h-3 w-3" />
+                            <span>Landline</span>
+                          </span>
+                        {:else}
+                          <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                            <Radio class="h-3 w-3" />
+                            <span>Dial-Up</span>
+                          </span>
+                        {/if}
+                      </div>
+                      <div class="text-xs font-medium text-slate-800 dark:text-slate-200 mt-1">
+                        {getPlanName({ name: o.planName }, $language)}
+                      </div>
+                    </td>
+
+                    <!-- Col 4: Phone & ID Proof -->
+                    <td class="px-4 py-4 align-top">
+                      <div class="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                        {o.customerPhone}
+                      </div>
+                      <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate max-w-[170px]">
+                        {o.customerEmail}
+                      </div>
+                      <div class="text-[10px] text-slate-400 font-mono mt-0.5">
+                        {o.idProofType}: {o.idProofNumber}
+                      </div>
+                    </td>
+
+                    <!-- Col 5: Fulfillment Status -->
+                    <td class="px-4 py-4 align-top">
+                      <span
+                        class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider {o.status ===
+                        'Connection Provided'
+                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                          : o.status === 'Feasible'
+                            ? 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700'
+                            : o.status === 'Not Feasible'
+                              ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+                              : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700'}"
+                      >
+                        <span
+                          class="h-2 w-2 rounded-full {o.status === 'Connection Provided'
+                            ? 'bg-emerald-500 animate-pulse'
+                            : o.status === 'Feasible'
+                              ? 'bg-sky-500'
+                              : o.status === 'Not Feasible'
+                                ? 'bg-rose-500'
+                                : 'bg-amber-500'}"
+                        ></span>
+                        <span>
+                          {$language === "vi"
+                            ? o.status === "Connection Provided"
+                              ? "Đã cấp kết nối"
+                              : o.status === "Feasible"
+                                ? "Khảo sát khả thi"
+                                : o.status === "Not Feasible"
+                                  ? "Không khả thi"
+                                  : "Chờ xử lý"
+                            : o.status}
+                        </span>
+                      </span>
+                    </td>
+
+                    <!-- Col 6: Action Button -->
+                    <td class="px-4 py-4 align-top text-right whitespace-nowrap">
+                      <button
+                        onclick={() => toggleOrderDropdown(o.id)}
+                        class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs {isExpanded
+                          ? 'bg-emerald-600 text-white shadow-emerald-600/30'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-100 dark:hover:bg-emerald-950 hover:text-emerald-800 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-700'}"
+                      >
+                        <span>{$language === "vi" ? (isExpanded ? "Thu gọn" : "Chi tiết") : (isExpanded ? "Collapse" : "Details")}</span>
+                        <ChevronDown
+                          class="h-4 w-4 transition-transform duration-200 {isExpanded ? 'rotate-180' : ''}"
+                        />
+                      </button>
+                    </td>
+                  </tr>
+
+                  <!-- DROPDOWN BOX CHI TIẾT TIẾN ĐỘ ĐƠN HÀNG -->
+                  {#if isExpanded}
+                    <tr class="bg-gradient-to-b from-emerald-50/50 to-slate-50 dark:from-emerald-950/20 dark:to-slate-950/40 border-b-2 border-emerald-400 dark:border-emerald-600/60">
+                      <td colspan="6" class="p-4 sm:p-6">
+                        <div class="space-y-6 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-md">
+                          <!-- Box Header -->
+                          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+                            <div class="flex items-start sm:items-center space-x-3">
+                              <div class="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800">
+                                <ShoppingBag class="h-6 w-6" />
+                              </div>
+                              <div>
+                                <div class="flex items-center space-x-3">
+                                  <h4 class="text-lg font-bold font-mono text-slate-900 dark:text-white">
+                                    {$language === "vi" ? "Mã đơn hàng:" : "Order ID:"}
+                                    <span class="text-emerald-600 dark:text-emerald-400 font-extrabold">{o.id}</span>
+                                  </h4>
+                                  <span
+                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider {o.status ===
+                                    'Connection Provided'
+                                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                                      : o.status === 'Feasible'
+                                        ? 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700'
+                                        : o.status === 'Not Feasible'
+                                          ? 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700'
+                                          : 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700'}"
+                                  >
+                                    {$language === "vi"
+                                      ? o.status === "Connection Provided"
+                                        ? "Đã cấp kết nối"
+                                        : o.status === "Feasible"
+                                          ? "Khảo sát khả thi"
+                                          : o.status === "Not Feasible"
+                                            ? "Không khả thi"
+                                            : "Chờ xử lý"
+                                      : o.status}
+                                  </span>
+                                </div>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                  {$language === "vi"
+                                    ? `Đăng ký lúc ${o.createdAt} bởi ${o.retailEmployeeName} (${o.retailOutletCode})`
+                                    : `Submitted at ${o.createdAt} by ${o.retailEmployeeName} (${o.retailOutletCode})`}
+                                </p>
+                              </div>
+                            </div>
+
+                            <!-- Header Actions -->
+                            <div class="flex flex-wrap items-center gap-2">
+                              <button
+                                onclick={() => copyToClipboard(o.id, "Order ID")}
+                                class="inline-flex items-center space-x-1 text-xs border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition font-medium"
+                              >
+                                <Copy class="h-3.5 w-3.5" />
+                                <span>{$language === "vi" ? "Sao chép mã đơn" : "Copy Order ID"}</span>
+                              </button>
+
+                              {#if o.assignedAccountId}
+                                <button
+                                  onclick={() => {
+                                    activeTab = "connection-details";
+                                    connSearchQuery = o.assignedAccountId!;
+                                    expandedConnAccountId = o.assignedAccountId!;
+                                  }}
+                                  class="inline-flex items-center space-x-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold transition shadow-xs"
+                                >
+                                  <Wifi class="h-3.5 w-3.5" />
+                                  <span>{$language === "vi" ? "Mở chi tiết thuê bao" : "View Connection"}</span>
+                                </button>
+                              {/if}
+
+                              <button
+                                onclick={() => (expandedOrderId = null)}
+                                class="inline-flex items-center space-x-1 text-xs border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                                title={$language === "vi" ? "Đóng hộp chi tiết" : "Close details"}
+                              >
+                                <X class="h-3.5 w-3.5" />
+                                <span>{$language === "vi" ? "Đóng" : "Close"}</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <!-- 4-Stage Visual Progress Stepper -->
+                          <div class="py-2">
+                            <div class="text-xs font-semibold uppercase tracking-wider text-slate-500 mb-5 flex items-center space-x-2">
+                              <Clock class="h-3.5 w-3.5 text-emerald-600" />
+                              <span>{$language === "vi" ? "Quy trình xử lý đơn hàng" : "Fulfillment Lifecycle Stepper"}</span>
+                            </div>
+
+                            <div class="grid grid-cols-4 gap-2 relative">
+                              {#each stepperStages as st (st.step)}
+                                {@const stageIdx = getStageIndex(o.status)}
+                                {@const isComplete = stageIdx >= st.step}
+                                {@const isFailed = o.status === "Not Feasible" && st.step >= 2}
+                                <div class="text-center space-y-2">
+                                  <div
+                                    class="h-10 w-10 mx-auto rounded-full flex items-center justify-center font-bold text-xs transition-colors {isFailed
+                                      ? 'bg-rose-500 text-white'
+                                      : isComplete
+                                        ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
+                                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400'}"
+                                  >
+                                    {#if isFailed}
+                                      !
+                                    {:else if isComplete}
+                                      <CheckCircle2 class="h-5 w-5" />
+                                    {:else}
+                                      {st.step}
+                                    {/if}
+                                  </div>
+                                  <div>
+                                    <div class="text-xs font-bold text-slate-900 dark:text-white">
+                                      {$language === "vi" ? st.labelVi : st.label}
+                                    </div>
+                                    <div class="text-[11px] text-slate-500 dark:text-slate-400">
+                                      {$language === "vi" ? st.subVi : st.sub}
+                                    </div>
+                                  </div>
+                                </div>
+                              {/each}
+                            </div>
+                          </div>
+
+                          <!-- Details Grid (3 Sections) -->
+                          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+                            <!-- Box 1: Customer Profile -->
+                            <div class="space-y-2.5 p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                              <h5 class="font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
+                                <User class="h-3.5 w-3.5 text-emerald-600" />
+                                <span>{$language === "vi" ? "Hồ sơ khách hàng" : "Customer Profile"}</span>
+                              </h5>
+                              <div class="space-y-1.5 text-xs">
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Họ tên:" : "Name:"}</span>
+                                  <strong class="text-slate-900 dark:text-white ml-1">{o.customerName}</strong>
+                                </div>
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Điện thoại:" : "Phone:"}</span>
+                                  <span class="font-mono font-semibold text-slate-800 dark:text-slate-200 ml-1">{o.customerPhone}</span>
+                                </div>
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Email:" : "Email:"}</span>
+                                  <span class="text-slate-800 dark:text-slate-200 ml-1">{o.customerEmail}</span>
+                                </div>
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Xác minh ID:" : "ID Proof:"}</span>
+                                  <span class="font-mono text-slate-700 dark:text-slate-300 ml-1">{o.idProofType} ({o.idProofNumber})</span>
+                                </div>
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Địa chỉ:" : "Address:"}</span>
+                                  <span class="text-slate-800 dark:text-slate-200 ml-1">{o.installationAddress}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <!-- Box 2: Service & Technical Data -->
+                            <div class="space-y-2.5 p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                              <h5 class="font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
+                                <Server class="h-3.5 w-3.5 text-emerald-600" />
+                                <span>{$language === "vi" ? "Dữ liệu dịch vụ & Kỹ thuật" : "Service & Technical"}</span>
+                              </h5>
+                              <div class="space-y-1.5 text-xs">
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Gói cước:" : "Plan:"}</span>
+                                  <strong class="text-slate-900 dark:text-white ml-1">{getPlanName({ name: o.planName }, $language)}</strong>
+                                </div>
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Loại kết nối:" : "Type:"}</span>
+                                  <span class="font-semibold text-slate-800 dark:text-slate-200 ml-1">{o.connectionType}</span>
+                                </div>
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Khoảng cách cáp:" : "Cable Distance:"}</span>
+                                  <span class="font-mono font-semibold text-slate-800 dark:text-slate-200 ml-1">{o.cableDistanceMeters || 120} m</span>
+                                </div>
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Hộp chia DP:" : "DP Box:"}</span>
+                                  <span class="text-slate-800 dark:text-slate-200 ml-1">{o.dpBoxCapacity || ($language === "vi" ? "Còn cổng khả dụng" : "Port Available")}</span>
+                                </div>
+                                {#if o.feasibilityNotes}
+                                  <div class="text-amber-600 dark:text-amber-400 pt-1">
+                                    <span class="font-semibold">{$language === "vi" ? "Ghi chú kỹ thuật:" : "Tech Notes:"}</span>
+                                    <p class="text-[11px] mt-0.5">{o.feasibilityNotes}</p>
+                                  </div>
+                                {/if}
+                              </div>
+                            </div>
+
+                            <!-- Box 3: Fulfillment & Issued Account -->
+                            <div class="space-y-2.5 p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800">
+                              <h5 class="font-bold text-xs text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
+                                <CheckCircle2 class="h-3.5 w-3.5 text-emerald-600" />
+                                <span>{$language === "vi" ? "Cấp phát tài khoản & Điểm giao dịch" : "Issued Account & Retail Outlet"}</span>
+                              </h5>
+                              <div class="space-y-2 text-xs">
+                                {#if o.assignedAccountId}
+                                  <div class="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800">
+                                    <span class="text-[11px] text-emerald-700 dark:text-emerald-400 font-semibold block">
+                                      {$language === "vi" ? "Mã tài khoản 16 ký tự đã cấp:" : "Issued 16-char Account ID:"}
+                                    </span>
+                                    <div class="flex items-center justify-between mt-1">
+                                      <span class="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-300">
+                                        {o.assignedAccountId}
+                                      </span>
+                                      <button
+                                        onclick={() => copyToClipboard(o.assignedAccountId!, "Account ID")}
+                                        class="p-1 rounded hover:bg-emerald-200 dark:hover:bg-emerald-800 text-emerald-600 dark:text-emerald-400 transition"
+                                        title={$language === "vi" ? "Sao chép mã tài khoản" : "Copy Account ID"}
+                                      >
+                                        <Copy class="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                {:else}
+                                  <div class="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400">
+                                    <span class="text-xs font-medium">
+                                      {$language === "vi" ? "Chưa cấp Account ID (Đang chờ kỹ thuật phê duyệt hoặc khảo sát)" : "Awaiting technician provisioning to generate Account ID."}
+                                    </span>
+                                  </div>
+                                {/if}
+
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Điểm quầy bán lẻ:" : "Retail Outlet:"}</span>
+                                  <span class="font-mono font-semibold text-slate-800 dark:text-slate-200 ml-1">{o.retailOutletCode}</span>
+                                </div>
+                                <div>
+                                  <span class="text-slate-500">{$language === "vi" ? "Nhân viên tiếp nhận:" : "Staff:"}</span>
+                                  <span class="text-slate-800 dark:text-slate-200 ml-1">{o.retailEmployeeName}</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  {/if}
+                {/each}
+              </tbody>
+            </table>
           </div>
-
-          <!-- Order Details Grid -->
-          <div
-            class="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800 text-sm"
-          >
-            <div
-              class="space-y-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
-            >
-              <h4 class="font-semibold text-xs text-slate-500 uppercase">
-                {$language === "vi" ? "Hồ sơ khách hàng" : "Customer Profile"}
-              </h4>
-              <div class="space-y-1.5 text-xs">
-                <div>
-                  <strong>{$language === "vi" ? "Họ tên:" : "Name:"}</strong>
-                  {trackedOrder.customerName}
-                </div>
-                <div>
-                  <strong
-                    >{$language === "vi" ? "Điện thoại:" : "Phone:"}</strong
-                  >
-                  {trackedOrder.customerPhone}
-                </div>
-                <div>
-                  <strong>{$language === "vi" ? "Email:" : "Email:"}</strong>
-                  {trackedOrder.customerEmail}
-                </div>
-                <div>
-                  <strong
-                    >{$language === "vi"
-                      ? "Xác minh:"
-                      : "Verification:"}</strong
-                  >
-                  {trackedOrder.idProofType} ({trackedOrder.idProofNumber})
-                </div>
-                <div>
-                  <strong>{$language === "vi" ? "Địa chỉ:" : "Address:"}</strong
-                  >
-                  {trackedOrder.installationAddress}
-                </div>
-              </div>
-            </div>
-
-            <div
-              class="space-y-3 p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800"
-            >
-              <h4 class="font-semibold text-xs text-slate-500 uppercase">
-                {$language === "vi"
-                  ? "Dữ liệu dịch vụ & Kỹ thuật"
-                  : "Service & Technical Data"}
-              </h4>
-              <div class="space-y-1.5 text-xs">
-                <div>
-                  <strong>{$language === "vi" ? "Gói cước:" : "Plan:"}</strong>
-                  {getPlanName({ name: trackedOrder.planName }, $language)} ({$language ===
-                  "vi"
-                    ? trackedOrder.connectionType === "Broadband"
-                      ? "Cáp quang"
-                      : trackedOrder.connectionType === "Dial-Up"
-                        ? "Quay số"
-                        : "Cố định"
-                    : trackedOrder.connectionType})
-                </div>
-                <div>
-                  <strong
-                    >{$language === "vi"
-                      ? "Khoảng cách cáp:"
-                      : "Cable Distance:"}</strong
-                  >
-                  {trackedOrder.cableDistanceMeters || 120}
-                  {$language === "vi" ? "mét" : "meters"}
-                </div>
-                <div>
-                  <strong
-                    >{$language === "vi"
-                      ? "Trạng thái hộp DP:"
-                      : "DP Box Status:"}</strong
-                  >
-                  {trackedOrder.dpBoxCapacity ||
-                    ($language === "vi"
-                      ? "Còn cổng khả dụng"
-                      : "Port Available")}
-                </div>
-                {#if trackedOrder.feasibilityNotes}
-                  <div class="text-amber-600 dark:text-amber-400 pt-1">
-                    <strong
-                      >{$language === "vi"
-                        ? "Ghi chú hiện trường:"
-                        : "Field Notes:"}</strong
-                    >
-                    {trackedOrder.feasibilityNotes}
-                  </div>
-                {/if}
-                {#if trackedOrder.assignedAccountId}
-                  <div class="pt-2">
-                    <span class="text-xs text-emerald-600 font-semibold block">
-                      {$language === "vi"
-                        ? "Mã tài khoản 16 ký tự đã cấp:"
-                        : "Issued 16-character Account ID:"}
-                    </span>
-                    <span
-                      class="font-mono text-base font-bold text-slate-900 dark:text-white"
-                      >{trackedOrder.assignedAccountId}</span
-                    >
-                  </div>
-                {/if}
-              </div>
-            </div>
-          </div>
-        </div>
-      {:else}
-        <div class="text-center py-12 text-slate-400">
-          {$language === "vi"
-            ? "Nhập Mã đơn hàng 11 ký tự phía trên để tra cứu tiến độ."
-            : "Enter an 11-character Order ID above to inspect tracking status."}
-        </div>
-      {/if}
+        {/if}
+      </div>
     </div>
   {/if}
 
   <!-- TAB 3: CONNECTION DETAILS -->
   {#if activeTab === "connection-details"}
     <div class="space-y-6">
-      <!-- Advanced search: Account ID / name / type / date period / contact number -->
-      <div
-        class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
-      >
-        <label
-          class="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400"
-        >
-          {$language === "vi"
-            ? "Tra cứu đường truyền nâng cao — Mã tài khoản 16 ký tự (T064-000000000001), tên thuê bao, loại dịch vụ, ngày lắp đặt, số điện thoại"
-            : "Advanced connection search — 16-char Account ID (T064-000000000001), name, type, install date, phone"}
-        </label>
+      <!-- 1. KPI Summary Cards -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <!-- Managed Accounts -->
+        <div class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+          <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center justify-between">
+            <span>{$language === "vi" ? "Thuê bao quản lý" : "Managed Accounts"}</span>
+            <Wifi class="h-3.5 w-3.5 text-slate-400" />
+          </div>
+          <div class="text-2xl font-bold font-mono text-slate-900 dark:text-white mt-1.5">
+            {$connections.length}
+            <span class="text-xs font-normal text-slate-400 ml-1">{$language === "vi" ? "tài khoản" : "circuits"}</span>
+          </div>
+          <div class="text-[10px] text-slate-500 mt-1">
+            {$language === "vi" ? "16 ký tự chuẩn ISO" : "16-char ISO standard"}
+          </div>
+        </div>
 
-        <div class="flex gap-2">
+        <!-- Active -->
+        <div class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/40 shadow-sm">
+          <div class="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center justify-between">
+            <span>{$language === "vi" ? "Đang hoạt động" : "Active Circuits"}</span>
+            <CheckCircle2 class="h-3.5 w-3.5 text-emerald-500" />
+          </div>
+          <div class="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-1.5">
+            {$connections.filter((c) => c.status === "Active").length}
+            <span class="text-xs font-normal text-emerald-600/70 ml-1">{$language === "vi" ? "trực tuyến" : "online"}</span>
+          </div>
+          <div class="text-[10px] text-emerald-600/80 dark:text-emerald-500 mt-1">
+            {$language === "vi" ? "Đường truyền thông suốt" : "Stable traffic flow"}
+          </div>
+        </div>
+
+        <!-- Temporarily Inactive -->
+        <div class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-900/40 shadow-sm">
+          <div class="text-[11px] font-mono text-amber-600 dark:text-amber-400 uppercase tracking-wider flex items-center justify-between">
+            <span>{$language === "vi" ? "Tạm khóa dịch vụ" : "Temporarily Inactive"}</span>
+            <AlertTriangle class="h-3.5 w-3.5 text-amber-500" />
+          </div>
+          <div class="text-2xl font-bold font-mono text-amber-700 dark:text-amber-400 mt-1.5">
+            {$connections.filter((c) => c.status === "Temporarily Inactive").length}
+            <span class="text-xs font-normal text-amber-600/70 ml-1">{$language === "vi" ? "tạm khóa" : "on hold"}</span>
+          </div>
+          <div class="text-[10px] text-amber-600/80 dark:text-amber-500 mt-1">
+            {$language === "vi" ? "Nợ cước / Tạm ngưng" : "Overdue / Suspended"}
+          </div>
+        </div>
+
+        <!-- Permanently Inactive -->
+        <div class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/40 shadow-sm">
+          <div class="text-[11px] font-mono text-rose-600 dark:text-rose-400 uppercase tracking-wider flex items-center justify-between">
+            <span>{$language === "vi" ? "Khóa vĩnh viễn" : "Cut Off"}</span>
+            <XCircle class="h-3.5 w-3.5 text-rose-500" />
+          </div>
+          <div class="text-2xl font-bold font-mono text-rose-700 dark:text-rose-400 mt-1.5">
+            {$connections.filter((c) => c.status === "Permanently Inactive").length}
+            <span class="text-xs font-normal text-rose-600/70 ml-1">{$language === "vi" ? "đã cắt" : "terminated"}</span>
+          </div>
+          <div class="text-[10px] text-rose-600/80 dark:text-rose-500 mt-1">
+            {$language === "vi" ? "Đã thu hồi cổng CPE" : "CPE & Port reclaimed"}
+          </div>
+        </div>
+
+        <!-- Total Outstanding Due Balance -->
+        <div class="p-4 rounded-xl bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/40 shadow-sm col-span-2 sm:col-span-1">
+          <div class="text-[11px] font-mono text-emerald-600 dark:text-emerald-400 uppercase tracking-wider flex items-center justify-between">
+            <span>{$language === "vi" ? "Tổng nợ cước" : "Outstanding Balance"}</span>
+            <Receipt class="h-3.5 w-3.5 text-emerald-500" />
+          </div>
+          <div class="text-2xl font-bold font-mono {totalDueAmountAllConnections > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'} mt-1.5">
+            ${totalDueAmountAllConnections.toFixed(2)}
+          </div>
+          <div class="text-[10px] text-slate-500 mt-1">
+            {$language === "vi" ? "Hỗ trợ thu ngân tại quầy" : "Payable at counter POS"}
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. Search & Filter Bar -->
+      <div class="bg-white dark:bg-slate-900 p-5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm space-y-4">
+        <div class="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+          <!-- Search input -->
           <div class="relative flex-1">
-            <Search class="absolute left-3 top-3 h-4 w-4 text-slate-400" />
+            <Search class="absolute left-3.5 top-3 h-4 w-4 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
               placeholder={$language === "vi"
-                ? "Mã tài khoản ví dụ T064-000000000001"
-                : "Account ID e.g. T064-000000000001"}
-              bind:value={accountSearchQuery}
-              onkeydown={(e) => e.key === "Enter" && handleSearchConnection()}
-              class="w-full pl-9 pr-4 py-2.5 text-base font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 tracking-widest"
+                ? "Tra cứu theo Mã tài khoản (16 ký tự), tên thuê bao, địa chỉ, SĐT, cổng NOC, IP..."
+                : "Search by 16-char Account ID, subscriber name, address, phone, NOC port, IP..."}
+              bind:value={connSearchQuery}
+              class="w-full pl-10 pr-4 py-2.5 text-sm bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-600 font-mono"
             />
           </div>
-          <button
-            onclick={() => handleSearchConnection()}
-            class="px-5 py-2.5 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow"
-          >
-            {$language === "vi" ? "Tải hồ sơ" : "Retrieve Profile"}
-          </button>
-        </div>
 
-        <div
-          class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs"
-        >
-          <input
-            type="text"
-            placeholder={$language === "vi"
-              ? "Tên thuê bao"
-              : "Subscriber name"}
-            bind:value={advConnName}
-            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          <select
-            bind:value={advConnType}
-            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          >
-            <option value="All"
-              >{$language === "vi" ? "Tất cả loại kết nối" : "Any type"}</option
-            >
-            <option value="Broadband"
-              >{$language === "vi"
-                ? "Cáp quang (Broadband)"
-                : "Broadband"}</option
-            >
-            <option value="Dial-Up"
-              >{$language === "vi" ? "Quay số (Dial-Up)" : "Dial-Up"}</option
-            >
-            <option value="Landline"
-              >{$language === "vi"
-                ? "Cố định (Landline)"
-                : "Landline (Telephone)"}</option
-            >
-          </select>
-          <input
-            type="text"
-            placeholder={$language === "vi"
-              ? "Số điện thoại"
-              : "Contact number"}
-            bind:value={advConnPhone}
-            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          <input
-            type="date"
-            bind:value={advConnFrom}
-            title={$language === "vi" ? "Lắp đặt từ ngày" : "Installed from"}
-            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-          <input
-            type="date"
-            bind:value={advConnTo}
-            title={$language === "vi" ? "Đến ngày" : "Installed to"}
-            class="px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-
-        <div
-          class="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500"
-        >
-          <span
-            >{$language === "vi"
-              ? `Kết quả (${advConnResults.length}):`
-              : `Results (${advConnResults.length}):`}</span
-          >
-          {#each advConnResults.slice(0, 12) as c (c.accountId)}
+          <div class="flex items-center gap-2">
             <button
-              onclick={() => (trackedConnection = c)}
-              class="font-mono text-emerald-600 dark:text-emerald-400 hover:underline bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-200 dark:border-emerald-800/40"
+              onclick={handleQuickTrackConnection}
+              class="px-4 py-2.5 rounded-lg text-sm font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition shadow flex items-center justify-center space-x-1.5 whitespace-nowrap"
             >
-              {c.accountId} · {c.customerName.split(" ")[0]} ({$language ===
-              "vi"
-                ? c.status === "Active"
-                  ? "Hoạt động"
-                  : c.status === "Temporarily Inactive"
-                    ? "Tạm khóa"
-                    : c.status
-                : c.status})
+              <Wifi class="h-4 w-4" />
+              <span>{$language === "vi" ? "Tải hồ sơ & Mở chi tiết" : "Retrieve & Open Details"}</span>
             </button>
-          {:else}
-            <span class="italic"
-              >{$language === "vi"
-                ? "Không tìm thấy đường truyền phù hợp."
-                : "No matching connections."}</span
+          </div>
+        </div>
+
+        <!-- Filter rows: Status & Connection Type -->
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-1">
+          <!-- Status Filter Pills (Horizontal row) -->
+          <div class="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-1 max-w-full">
+            <button
+              onclick={() => (connStatusFilter = "All")}
+              class="px-2.5 py-1 text-xs font-medium rounded-lg transition {connStatusFilter === 'All'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}"
             >
+              {$language === "vi" ? "Tất cả" : "All"} ({$connections.length})
+            </button>
+            <button
+              onclick={() => (connStatusFilter = "Active")}
+              class="px-2.5 py-1 text-xs font-medium rounded-lg transition {connStatusFilter === 'Active'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}"
+            >
+              {$language === "vi" ? "Hoạt động" : "Active"} ({$connections.filter((c) => c.status === "Active").length})
+            </button>
+            <button
+              onclick={() => (connStatusFilter = "Temporarily Inactive")}
+              class="px-2.5 py-1 text-xs font-medium rounded-lg transition {connStatusFilter === 'Temporarily Inactive'
+                ? 'bg-amber-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}"
+            >
+              {$language === "vi" ? "Tạm khóa" : "Inactive"} ({$connections.filter((c) => c.status === "Temporarily Inactive").length})
+            </button>
+            <button
+              onclick={() => (connStatusFilter = "Permanently Inactive")}
+              class="px-2.5 py-1 text-xs font-medium rounded-lg transition {connStatusFilter === 'Permanently Inactive'
+                ? 'bg-rose-600 text-white shadow-sm'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'}"
+            >
+              {$language === "vi" ? "Khóa vĩnh viễn" : "Cut Off"} ({$connections.filter((c) => c.status === "Permanently Inactive").length})
+            </button>
+          </div>
+
+          <!-- Connection Type Filter -->
+          <div class="flex items-center space-x-2 text-xs">
+            <span class="text-slate-500 dark:text-slate-400 whitespace-nowrap">
+              {$language === "vi" ? "Loại dịch vụ:" : "Service Type:"}
+            </span>
+            <select
+              bind:value={connTypeFilter}
+              class="bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 text-slate-800 dark:text-slate-200 font-medium focus:outline-none focus:ring-1 focus:ring-emerald-500 text-xs"
+            >
+              <option value="All">{$language === "vi" ? "Tất cả loại dịch vụ" : "All Types"}</option>
+              <option value="Broadband">Broadband (Cáp quang)</option>
+              <option value="Landline">Landline (Cố định)</option>
+              <option value="Dial-Up">Dial-Up (Quay số)</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Fast Pick Tags -->
+        <div class="flex flex-wrap items-center gap-2 pt-1 text-xs text-slate-500 dark:text-slate-400 font-mono">
+          <span class="text-[11px]">{$language === "vi" ? "Mã tài khoản mới nhất:" : "Latest Accounts:"}</span>
+          {#each $connections as c (c.accountId)}
+            <button
+              onclick={() => {
+                connSearchQuery = c.accountId;
+                expandedConnAccountId = c.accountId;
+              }}
+              class="px-2 py-0.5 rounded border transition font-semibold text-[11px] {expandedConnAccountId === c.accountId
+                ? 'bg-emerald-100 dark:bg-emerald-950/60 border-emerald-400 text-emerald-800 dark:text-emerald-300 ring-1 ring-emerald-400'
+                : 'bg-slate-100 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-emerald-400'}"
+            >
+              {c.accountId}
+            </button>
           {/each}
         </div>
       </div>
 
-      <!-- Connection Profile Card -->
-      {#if trackedConnection}
-        <div
-          class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-sm space-y-6"
-        >
-          <div
-            class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4"
-          >
-            <div>
-              <div class="flex items-center space-x-3">
-                <h2
-                  class="text-xl font-bold font-mono text-slate-900 dark:text-white"
-                >
-                  {$language === "vi"
-                    ? "Tài khoản #"
-                    : "Account #"}{trackedConnection.accountId}
-                </h2>
-                <span
-                  class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold {trackedConnection.status ===
-                  'Active'
-                    ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300'
-                    : trackedConnection.status === 'Temporarily Inactive'
-                      ? 'bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300'
-                      : 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300'}"
-                >
-                  {$language === "vi"
-                    ? trackedConnection.status === "Active"
-                      ? "Hoạt động"
-                      : trackedConnection.status === "Temporarily Inactive"
-                        ? "Tạm ngưng"
-                        : trackedConnection.status
-                    : trackedConnection.status}
-                </span>
-              </div>
-              <p class="text-xs text-slate-500 mt-1">
-                {$language === "vi" ? "Thuê bao:" : "Subscriber:"}
-                <strong class="text-slate-700 dark:text-slate-300"
-                  >{trackedConnection.customerName}</strong
-                >
-                • {$language === "vi" ? "Kích hoạt ngày" : "Activated on"}
-                {trackedConnection.installedDate}
-              </p>
-            </div>
-
-            <div class="flex items-center space-x-2">
-              <button
-                onclick={() =>
-                  copyToClipboard(trackedConnection!.accountId, "Account ID")}
-                class="inline-flex items-center space-x-1 text-xs border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:text-white"
-              >
-                <Copy class="h-3.5 w-3.5" />
-                <span
-                  >{$language === "vi"
-                    ? "Sao chép mã tài khoản"
-                    : "Copy Account ID"}</span
-                >
-              </button>
-            </div>
+      <!-- 3. Connections Table List with Dropdown Accordion -->
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm overflow-hidden">
+        <div class="p-5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-950/50">
+          <div>
+            <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center space-x-2">
+              <Wifi class="h-5 w-5 text-emerald-600" />
+              <span>{$language === "vi" ? "Danh sách chi tiết thuê bao & hồ sơ đường truyền" : "Subscriber Connection Registry & Profiles"}</span>
+              <span class="ml-2 px-2.5 py-0.5 text-xs font-mono font-bold rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                {filteredTrackedConnections.length} {$language === "vi" ? "thuê bao" : "subscribers"}
+              </span>
+            </h3>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-            <div
-              class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2"
+          {#if expandedConnAccountId}
+            <button
+              onclick={() => (expandedConnAccountId = null)}
+              class="text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-1.5 transition bg-white dark:bg-slate-900 flex items-center gap-1 self-start sm:self-auto"
             >
-              <div class="text-slate-400 font-semibold uppercase">
-                {$language === "vi" ? "Thông số dịch vụ" : "Service Parameters"}
-              </div>
-              <div>
-                <strong>{$language === "vi" ? "Gói cước:" : "Plan:"}</strong>
-                {getPlanName({ name: trackedConnection.planName }, $language)}
-              </div>
-              <div>
-                <strong
-                  >{$language === "vi"
-                    ? "Loại kết nối:"
-                    : "Connection:"}</strong
-                >
-                {$language === "vi"
-                  ? trackedConnection.connectionType === "Broadband"
-                    ? "Cáp quang (Broadband)"
-                    : trackedConnection.connectionType === "Dial-Up"
-                      ? "Quay số (Dial-Up)"
-                      : "Cố định (Landline)"
-                  : trackedConnection.connectionType}
-              </div>
-              <div>
-                <strong
-                  >{$language === "vi"
-                    ? "Cước thuê tháng:"
-                    : "Monthly Rental:"}</strong
-                >
-                ${trackedConnection.monthlyRental.toFixed(2)}
-              </div>
-              <div>
-                <strong
-                  >{$language === "vi"
-                    ? "Tiền đặt cọc:"
-                    : "Security Deposit:"}</strong
-                >
-                ${trackedConnection.securityDeposit.toFixed(2)}
-              </div>
-            </div>
+              <X class="h-3.5 w-3.5" />
+              <span>{$language === "vi" ? "Thu gọn tất cả chi tiết" : "Collapse All Details"}</span>
+            </button>
+          {/if}
+        </div>
 
-            <div
-              class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2"
-            >
-              <div class="text-slate-400 font-semibold uppercase">
-                {$language === "vi"
-                  ? "Dữ liệu vật lý & Tuyến cáp"
-                  : "Physical & Circuit Data"}
-              </div>
-              <div>
-                <strong
-                  >{$language === "vi"
-                    ? "Địa chỉ IP cấp:"
-                    : "Assigned IP:"}</strong
-                >
-                {trackedConnection.ipAddress || "Dynamic DHCP"}
-              </div>
-              <div>
-                <strong
-                  >{$language === "vi"
-                    ? "Cổng Switch:"
-                    : "Switch Port:"}</strong
-                >
-                {trackedConnection.portNumber || "PON-01"}
-              </div>
-              <div>
-                <strong
-                  >{$language === "vi"
-                    ? "Thiết bị cấp:"
-                    : "Assigned Device:"}</strong
-                >
-                {trackedConnection.assignedDeviceModel || "Standard CPE"}
-              </div>
-              <div class="font-mono">
-                <strong>{$language === "vi" ? "Số sê-ri:" : "Serial:"}</strong>
-                {trackedConnection.assignedDeviceSerial || "NX-AUTO-GEN"}
-              </div>
+        {#if filteredTrackedConnections.length === 0}
+          <div class="py-16 text-center space-y-3">
+            <Wifi class="h-10 w-10 text-slate-400 mx-auto opacity-50" />
+            <div class="text-sm font-semibold text-slate-700 dark:text-slate-300 font-mono">
+              {$language === "vi" ? "Không tìm thấy thuê bao nào khớp với bộ lọc." : "No accounts match the current filter criteria."}
             </div>
-
-            <div
-              class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2"
+            <button
+              onclick={() => {
+                connSearchQuery = "";
+                connStatusFilter = "All";
+                connTypeFilter = "All";
+              }}
+              class="px-4 py-1.5 text-xs font-semibold bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition"
             >
-              <div class="text-slate-400 font-semibold uppercase">
-                {$language === "vi" ? "Liên hệ & Địa chỉ" : "Contact & Address"}
-              </div>
-              <div>
-                <strong>{$language === "vi" ? "Điện thoại:" : "Phone:"}</strong>
-                {trackedConnection.customerPhone}
-              </div>
-              <div>
-                <strong>{$language === "vi" ? "Email:" : "Email:"}</strong>
-                {trackedConnection.customerEmail}
-              </div>
-              <div>
-                <strong
-                  >{$language === "vi"
-                    ? "Địa chỉ lắp đặt:"
-                    : "Installation:"}</strong
-                >
-                {trackedConnection.installationAddress}
-              </div>
-              {#if trackedConnection.lastStatusReason}
-                <div class="text-amber-500 pt-1">
-                  <strong>{$language === "vi" ? "Lý do:" : "Reason:"}</strong>
-                  {trackedConnection.lastStatusReason}
-                </div>
-              {/if}
-            </div>
+              {$language === "vi" ? "Đặt lại bộ lọc" : "Reset Filters"}
+            </button>
           </div>
-        </div>
-      {:else}
-        <div class="text-center py-12 text-slate-400">
-          {$language === "vi"
-            ? "Nhập mã tài khoản 16 ký tự phía trên để tra cứu hồ sơ đường truyền."
-            : "Enter a 16-character Account ID above to retrieve connection details."}
-        </div>
-      {/if}
+        {:else}
+          <div class="overflow-x-auto">
+            <table class="w-full text-left text-sm border-collapse">
+              <thead class="bg-slate-50 dark:bg-slate-950/80 text-[11px] font-mono text-slate-600 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
+                <tr>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "MÃ TÀI KHOẢN (16 KÝ TỰ)" : "ACCOUNT ID (16-CHAR)"}</th>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "THUÊ BAO & ĐỊA CHỈ" : "SUBSCRIBER & LOCATION"}</th>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "LOẠI DỊCH VỤ & GÓI CƯỚC" : "SERVICE & PLAN"}</th>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "CỔNG NOC & IP" : "NOC PORT & IP"}</th>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "DƯ NỢ CƯỚC ($)" : "OUTSTANDING DUE ($)"}</th>
+                  <th class="px-4 py-3.5">{$language === "vi" ? "TRẠNG THÁI" : "STATUS"}</th>
+                  <th class="px-4 py-3.5 text-right">{$language === "vi" ? "THAO TÁC" : "ACTIONS"}</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 dark:divide-slate-800/60 font-sans">
+                {#each filteredTrackedConnections as conn (conn.accountId)}
+                  {@const isExpanded = expandedConnAccountId === conn.accountId}
+                  {@const due = getConnectionDueAmount(conn.accountId)}
+                  <!-- Main Table Row -->
+                  <tr
+                    class="transition-colors hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 {isExpanded
+                      ? 'bg-emerald-50/60 dark:bg-emerald-950/30'
+                      : ''}"
+                  >
+                    <!-- Col 1: Account ID -->
+                    <td class="px-4 py-4 align-top">
+                      <div class="flex items-center space-x-1.5">
+                        <span class="font-mono font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">
+                          {conn.accountId}
+                        </span>
+                        <button
+                          onclick={() => copyToClipboard(conn.accountId, "Account ID")}
+                          class="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition"
+                          title={$language === "vi" ? "Sao chép mã tài khoản" : "Copy Account ID"}
+                        >
+                          <Copy class="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-1 flex items-center space-x-1">
+                        <span>{$language === "vi" ? "Đơn gốc:" : "Order:"}</span>
+                        <span class="text-slate-700 dark:text-slate-300">#{conn.orderId}</span>
+                      </div>
+                    </td>
+
+                    <!-- Col 2: Subscriber & Location -->
+                    <td class="px-4 py-4 align-top">
+                      <div class="font-semibold text-slate-900 dark:text-white">
+                        {conn.customerName}
+                      </div>
+                      <div class="text-xs text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">
+                        {conn.installationAddress}
+                      </div>
+                      <div class="text-[11px] font-mono text-slate-500 dark:text-slate-400 mt-0.5">
+                        {conn.customerPhone}
+                      </div>
+                    </td>
+
+                    <!-- Col 3: Service Type & Plan -->
+                    <td class="px-4 py-4 align-top">
+                      <div class="flex items-center space-x-1.5">
+                        {#if conn.connectionType === "Broadband"}
+                          <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                            <Wifi class="h-3 w-3" />
+                            <span>Broadband</span>
+                          </span>
+                        {:else if conn.connectionType === "Landline"}
+                          <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-100 dark:bg-purple-950 text-purple-800 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                            <Phone class="h-3 w-3" />
+                            <span>Landline</span>
+                          </span>
+                        {:else}
+                          <span class="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                            <Radio class="h-3 w-3" />
+                            <span>Dial-Up</span>
+                          </span>
+                        {/if}
+                      </div>
+                      <div class="text-xs font-medium text-slate-800 dark:text-slate-200 mt-1">
+                        {conn.planName}
+                      </div>
+                      <div class="text-[11px] font-mono text-slate-500">
+                        ${conn.monthlyRental.toFixed(2)}/{$language === "vi" ? "tháng" : "mo"}
+                      </div>
+                    </td>
+
+                    <!-- Col 4: NOC Port & IP -->
+                    <td class="px-4 py-4 align-top font-mono text-xs">
+                      <div class="font-bold text-slate-800 dark:text-slate-200">
+                        {conn.portNumber || "PON-01/04"}
+                      </div>
+                      <div class="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        IP: {conn.ipAddress || "198.51.100.42"}
+                      </div>
+                      <div class="text-[10px] text-slate-400 truncate max-w-[140px] mt-0.5">
+                        CPE: {conn.assignedDeviceSerial || "Chưa gán"}
+                      </div>
+                    </td>
+
+                    <!-- Col 5: Outstanding Due -->
+                    <td class="px-4 py-4 align-top">
+                      <div class="font-mono text-base font-bold {due > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}">
+                        ${due.toFixed(2)}
+                      </div>
+                      <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold mt-1 {due === 0 ? 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300'}">
+                        {due === 0 ? ($language === "vi" ? "Đã quyết toán" : "Paid in Full") : ($language === "vi" ? "Còn dư nợ" : "Unpaid Balance")}
+                      </span>
+                    </td>
+
+                    <!-- Col 6: Status -->
+                    <td class="px-4 py-4 align-top">
+                      <span
+                        class="inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-xs font-bold uppercase tracking-wider {conn.status ===
+                        'Active'
+                          ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                          : conn.status === 'Temporarily Inactive'
+                            ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                            : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700'}"
+                      >
+                        <span
+                          class="h-2 w-2 rounded-full {conn.status === 'Active'
+                            ? 'bg-emerald-500 animate-pulse'
+                            : conn.status === 'Temporarily Inactive'
+                              ? 'bg-amber-500'
+                              : 'bg-rose-500'}"
+                        ></span>
+                        <span>
+                          {$language === "vi"
+                            ? conn.status === "Active"
+                              ? "Hoạt động"
+                              : conn.status === "Temporarily Inactive"
+                                ? "Tạm khóa"
+                                : "Khóa vĩnh viễn"
+                            : conn.status}
+                        </span>
+                      </span>
+                    </td>
+
+                    <!-- Col 7: Action Button -->
+                    <td class="px-4 py-4 align-top text-right whitespace-nowrap">
+                      <button
+                        onclick={() => toggleConnDropdown(conn.accountId)}
+                        class="inline-flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition shadow-xs {isExpanded
+                          ? 'bg-emerald-600 text-white shadow-emerald-600/30'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-emerald-100 dark:hover:bg-emerald-950 hover:text-emerald-800 dark:hover:text-emerald-300 border border-slate-200 dark:border-slate-700'}"
+                      >
+                        <span>{$language === "vi" ? (isExpanded ? "Thu gọn" : "Chi tiết") : (isExpanded ? "Collapse" : "Details")}</span>
+                        <ChevronDown
+                          class="h-4 w-4 transition-transform duration-200 {isExpanded ? 'rotate-180' : ''}"
+                        />
+                      </button>
+                    </td>
+                  </tr>
+
+                  <!-- DROPDOWN BOX CHI TIẾT CỦA MÃ TÀI KHOẢN -->
+                  {#if isExpanded}
+                    {@const connBills = getBillsForConnection(conn.accountId)}
+                    <tr class="bg-gradient-to-b from-emerald-50/50 to-slate-50 dark:from-emerald-950/20 dark:to-slate-950/40 border-b-2 border-emerald-400 dark:border-emerald-600/60">
+                      <td colspan="7" class="p-4 sm:p-6">
+                        <div class="space-y-6 rounded-xl border border-emerald-200 dark:border-emerald-900/60 bg-white dark:bg-slate-900 p-5 sm:p-6 shadow-md">
+                          <!-- Box Header -->
+                          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
+                            <div class="flex items-start sm:items-center space-x-3">
+                              <div class="p-2.5 rounded-xl bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-800">
+                                <Wifi class="h-6 w-6" />
+                              </div>
+                              <div>
+                                <div class="flex items-center space-x-3">
+                                  <h4 class="text-lg font-bold font-mono text-slate-900 dark:text-white">
+                                    {$language === "vi" ? "Mã tài khoản:" : "Account ID:"}
+                                    <span class="text-emerald-600 dark:text-emerald-400 font-extrabold">{conn.accountId}</span>
+                                  </h4>
+                                  <span
+                                    class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider {conn.status ===
+                                    'Active'
+                                      ? 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700'
+                                      : conn.status === 'Temporarily Inactive'
+                                        ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                                        : 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700'}"
+                                  >
+                                    {$language === "vi"
+                                      ? conn.status === "Active"
+                                        ? "Hoạt động bình thường"
+                                        : conn.status === "Temporarily Inactive"
+                                          ? "Tạm khóa dịch vụ"
+                                          : "Khóa vĩnh viễn"
+                                      : conn.status}
+                                  </span>
+                                </div>
+                                <p class="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                  {$language === "vi" ? "Thuê bao:" : "Subscriber:"}
+                                  <strong class="text-slate-700 dark:text-slate-300">{conn.customerName}</strong>
+                                  • {$language === "vi" ? "Kích hoạt ngày" : "Activated on"} {conn.installedDate}
+                                  • {$language === "vi" ? "Điện thoại:" : "Phone:"} {conn.customerPhone}
+                                </p>
+                              </div>
+                            </div>
+
+                            <!-- Header Actions -->
+                            <div class="flex flex-wrap items-center gap-2">
+                              {#if connBills.length > 0 && due > 0}
+                                <button
+                                  type="button"
+                                  onclick={() => handleOpenRetailPayment(connBills[0])}
+                                  class="inline-flex items-center space-x-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-semibold transition shadow-xs"
+                                >
+                                  <CreditCard class="h-3.5 w-3.5" />
+                                  <span>{$language === "vi" ? `Thu tiền tại quầy ($${due.toFixed(2)})` : `Pay at Counter ($${due.toFixed(2)})`}</span>
+                                </button>
+                              {/if}
+
+                              <button
+                                onclick={() => copyToClipboard(conn.accountId, "Account ID")}
+                                class="inline-flex items-center space-x-1 text-xs border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition font-medium"
+                              >
+                                <Copy class="h-3.5 w-3.5" />
+                                <span>{$language === "vi" ? "Sao chép Account ID" : "Copy Account ID"}</span>
+                              </button>
+
+                              <button
+                                onclick={() => (expandedConnAccountId = null)}
+                                class="inline-flex items-center space-x-1 text-xs border border-slate-200 dark:border-slate-800 px-3 py-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                                title={$language === "vi" ? "Đóng hộp chi tiết" : "Close details"}
+                              >
+                                <X class="h-3.5 w-3.5" />
+                                <span>{$language === "vi" ? "Đóng" : "Close"}</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          <!-- 4 Detail Blocks (Spec §9) -->
+                          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs">
+                            <!-- Block 1: Service Parameters -->
+                            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                              <div class="text-slate-400 font-bold uppercase tracking-wider flex items-center space-x-1.5">
+                                <FileText class="h-3.5 w-3.5 text-emerald-600" />
+                                <span>{$language === "vi" ? "Thông số dịch vụ" : "Service Parameters"}</span>
+                              </div>
+                              <div class="pt-1">
+                                <span class="text-slate-500">{$language === "vi" ? "Gói cước:" : "Plan:"}</span>
+                                <strong class="text-slate-900 dark:text-white ml-1">{getPlanName({ name: conn.planName }, $language)}</strong>
+                              </div>
+                              <div>
+                                <span class="text-slate-500">{$language === "vi" ? "Loại kết nối:" : "Connection:"}</span>
+                                <span class="font-semibold text-slate-800 dark:text-slate-200 ml-1">
+                                  {$language === "vi"
+                                    ? conn.connectionType === "Broadband"
+                                      ? "Cáp quang (Broadband)"
+                                      : conn.connectionType === "Dial-Up"
+                                        ? "Quay số (Dial-Up)"
+                                        : "Cố định (Landline)"
+                                    : conn.connectionType}
+                                </span>
+                              </div>
+                              <div>
+                                <span class="text-slate-500">{$language === "vi" ? "Cước thuê tháng:" : "Monthly Rental:"}</span>
+                                <span class="font-mono font-bold text-slate-900 dark:text-white ml-1">${conn.monthlyRental.toFixed(2)}</span>
+                              </div>
+                              <div>
+                                <span class="text-slate-500">{$language === "vi" ? "Tiền đặt cọc:" : "Security Deposit:"}</span>
+                                <span class="font-mono text-slate-800 dark:text-slate-200 ml-1">${conn.securityDeposit.toFixed(2)}</span>
+                              </div>
+                            </div>
+
+                            <!-- Block 2: Physical & Circuit Data -->
+                            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                              <div class="text-slate-400 font-bold uppercase tracking-wider flex items-center space-x-1.5">
+                                <HardDrive class="h-3.5 w-3.5 text-emerald-600" />
+                                <span>{$language === "vi" ? "Dữ liệu vật lý & Tuyến cáp" : "Physical & Circuit Data"}</span>
+                              </div>
+                              <div class="pt-1">
+                                <span class="text-slate-500">{$language === "vi" ? "Địa chỉ IP cấp:" : "Assigned IP:"}</span>
+                                <span class="font-mono font-semibold text-slate-800 dark:text-slate-200 ml-1">{conn.ipAddress || "Dynamic DHCP"}</span>
+                              </div>
+                              <div>
+                                <span class="text-slate-500">{$language === "vi" ? "Cổng Switch/NOC:" : "Switch Port:"}</span>
+                                <span class="font-mono font-semibold text-slate-800 dark:text-slate-200 ml-1">{conn.portNumber || "PON-01"}</span>
+                              </div>
+                              <div>
+                                <span class="text-slate-500">{$language === "vi" ? "Thiết bị cấp:" : "Assigned Device:"}</span>
+                                <span class="text-slate-800 dark:text-slate-200 ml-1">{conn.assignedDeviceModel || "Standard CPE"}</span>
+                              </div>
+                              <div class="font-mono">
+                                <span class="text-slate-500">{$language === "vi" ? "Số sê-ri CPE:" : "Serial:"}</span>
+                                <span class="text-slate-800 dark:text-slate-200 ml-1">{conn.assignedDeviceSerial || "NX-AUTO-GEN"}</span>
+                              </div>
+                            </div>
+
+                            <!-- Block 3: Contact & Address -->
+                            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                              <div class="text-slate-400 font-bold uppercase tracking-wider flex items-center space-x-1.5">
+                                <User class="h-3.5 w-3.5 text-emerald-600" />
+                                <span>{$language === "vi" ? "Liên hệ & Địa chỉ" : "Contact & Address"}</span>
+                              </div>
+                              <div class="pt-1">
+                                <span class="text-slate-500">{$language === "vi" ? "Điện thoại:" : "Phone:"}</span>
+                                <span class="font-mono font-semibold text-slate-800 dark:text-slate-200 ml-1">{conn.customerPhone}</span>
+                              </div>
+                              <div>
+                                <span class="text-slate-500">{$language === "vi" ? "Email:" : "Email:"}</span>
+                                <span class="text-slate-800 dark:text-slate-200 ml-1">{conn.customerEmail}</span>
+                              </div>
+                              <div>
+                                <span class="text-slate-500">{$language === "vi" ? "Địa chỉ lắp đặt:" : "Installation:"}</span>
+                                <span class="text-slate-800 dark:text-slate-200 ml-1">{conn.installationAddress}</span>
+                              </div>
+                              {#if conn.lastStatusReason}
+                                <div class="text-amber-500 pt-1">
+                                  <span class="font-semibold">{$language === "vi" ? "Lý do trạng thái:" : "Reason:"}</span>
+                                  <p class="text-[11px] mt-0.5">{conn.lastStatusReason}</p>
+                                </div>
+                              {/if}
+                            </div>
+
+                            <!-- Block 4: Financial & Due Status -->
+                            <div class="p-4 rounded-xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 space-y-2">
+                              <div class="text-slate-400 font-bold uppercase tracking-wider flex items-center space-x-1.5">
+                                <Receipt class="h-3.5 w-3.5 text-emerald-600" />
+                                <span>{$language === "vi" ? "Tài chính & Nợ cước" : "Billing & Due Status"}</span>
+                              </div>
+                              <div class="pt-1">
+                                <span class="block text-[11px] text-slate-500">{$language === "vi" ? "Số tiền còn nợ:" : "Outstanding Due:"}</span>
+                                <span class="text-lg font-bold font-mono {due > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}">
+                                  ${due.toFixed(2)}
+                                </span>
+                              </div>
+                              <div>
+                                <span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold {due === 0 ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300' : 'bg-rose-100 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300'}">
+                                  {due === 0 ? ($language === "vi" ? "Đã quyết toán đủ" : "Paid in Full") : ($language === "vi" ? "Chưa thanh toán" : "Balance Outstanding")}
+                                </span>
+                              </div>
+                              <div class="text-[11px] text-slate-500 pt-1">
+                                {$language === "vi" ? `Tổng số hóa đơn: ${connBills.length}` : `Invoices on file: ${connBills.length}`}
+                              </div>
+                              {#if connBills.length > 0 && due > 0}
+                                <button
+                                  type="button"
+                                  onclick={() => handleOpenRetailPayment(connBills[0])}
+                                  class="w-full mt-2 py-1.5 px-2.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs transition flex items-center justify-center space-x-1 shadow-sm"
+                                >
+                                  <CreditCard class="h-3.5 w-3.5" />
+                                  <span>{$language === "vi" ? "Thu tiền tại quầy" : "Pay at Counter"}</span>
+                                </button>
+                              {/if}
+                            </div>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  {/if}
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
+      </div>
     </div>
   {/if}
 

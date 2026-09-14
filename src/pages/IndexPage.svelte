@@ -9,18 +9,54 @@
   import {
     Layers, Sparkles, Wifi, Radio, Phone, ShieldCheck, Zap, Server,
     CheckCircle2, ArrowRight, Sun, Moon, LogOut, User, MapPin, Clock,
-    ChevronRight, PhoneCall, HardDrive,
+    ChevronLeft, ChevronRight, PhoneCall, HardDrive, Search,
   } from 'lucide-svelte';
+  import SearchDropdown from '../components/layout/SearchDropdown.svelte';
 
   const { currentUser, logout } = authStore;
   const { theme, toggleTheme } = themeStore;
   const { t, language } = languageStore;
-  const { plans, inventory, retailShops } = nexusStore;
+  const { plans, retailShops } = nexusStore;
   import { toast } from 'svelte-sonner';
 
   // Filter tab for plans
   type Category = 'all' | 'Broadband' | 'Landline' | 'Dial-Up';
   let activeCategory = $state<Category>('all');
+
+  // Carousel scroll state for plans
+  let plansCarouselRef = $state<HTMLDivElement | null>(null);
+  let canScrollLeft = $state(false);
+  let canScrollRight = $state(true);
+
+  const updatePlansScrollState = () => {
+    if (!plansCarouselRef) return;
+    const maxScroll = plansCarouselRef.scrollWidth - plansCarouselRef.clientWidth;
+    canScrollLeft = plansCarouselRef.scrollLeft > 10;
+    canScrollRight = maxScroll > 0 && plansCarouselRef.scrollLeft < maxScroll - 10;
+  };
+
+  const slidePlansLeft = () => {
+    if (!plansCarouselRef) return;
+    const cardWidth = plansCarouselRef.querySelector<HTMLElement>('.plan-card')?.clientWidth || 300;
+    plansCarouselRef.scrollBy({ left: -(cardWidth + 16), behavior: 'smooth' });
+    setTimeout(updatePlansScrollState, 300);
+  };
+
+  const slidePlansRight = () => {
+    if (!plansCarouselRef) return;
+    const cardWidth = plansCarouselRef.querySelector<HTMLElement>('.plan-card')?.clientWidth || 300;
+    plansCarouselRef.scrollBy({ left: cardWidth + 16, behavior: 'smooth' });
+    setTimeout(updatePlansScrollState, 300);
+  };
+
+  // Reset scroll position when category changes
+  $effect(() => {
+    activeCategory;
+    if (plansCarouselRef) {
+      plansCarouselRef.scrollTo({ left: 0, behavior: 'smooth' });
+      setTimeout(updatePlansScrollState, 150);
+    }
+  });
 
   const handleGoToDashboard = () => {
     if (!$currentUser) return;
@@ -45,6 +81,13 @@
 
   const formatPrice = (price: number) =>
     $language === 'vi' ? `${price.toLocaleString('vi-VN')}₫/tháng` : `$${price.toFixed(2)}/mo`;
+
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
 </script>
 
 <div class="h-full w-full overflow-y-scroll overflow-x-hidden bg-[#E0F1FF] dark:bg-[#1B2D40] text-[#1B2D40] dark:text-[#E0F1FF] font-sans antialiased selection:bg-sky-500 selection:text-white transition-colors duration-300">
@@ -75,14 +118,16 @@
 
       <!-- Nav Links -->
       <nav class="hidden md:flex items-center space-x-6 text-sm font-semibold text-[#3A5B7E] dark:text-[#94B5D6]">
-        <a href="#intro" class="hover:text-sky-600 dark:hover:text-white transition-colors">{$t.nav.about}</a>
-        <a href="#plans" class="hover:text-sky-600 dark:hover:text-white transition-colors">{$t.nav.plans}</a>
-        <a href="#hardware" class="hover:text-sky-600 dark:hover:text-white transition-colors">{$t.nav.hardware}</a>
-        <a href="#shops" class="hover:text-sky-600 dark:hover:text-white transition-colors">{$t.nav.shops}</a>
+        <button type="button" onclick={() => scrollToSection('intro')} class="hover:text-sky-600 dark:hover:text-white transition-colors cursor-pointer bg-transparent border-0 p-0 text-sm font-semibold text-[#3A5B7E] dark:text-[#94B5D6]">{$t.nav.about}</button>
+        <button type="button" onclick={() => scrollToSection('plans')} class="hover:text-sky-600 dark:hover:text-white transition-colors cursor-pointer bg-transparent border-0 p-0 text-sm font-semibold text-[#3A5B7E] dark:text-[#94B5D6]">{$t.nav.plans}</button>
+        <button type="button" onclick={() => scrollToSection('shops')} class="hover:text-sky-600 dark:hover:text-white transition-colors cursor-pointer bg-transparent border-0 p-0 text-sm font-semibold text-[#3A5B7E] dark:text-[#94B5D6]">{$t.nav.shops}</button>
       </nav>
 
       <!-- Right Action Buttons -->
       <div class="flex items-center space-x-2.5">
+        <!-- Search Droplist (Category Search Dropdown) -->
+        <SearchDropdown />
+
         <!-- Language Switcher (EN / VI) -->
         <LanguageToggle />
 
@@ -166,13 +211,14 @@
 
       <!-- Call to Actions -->
       <div class="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4">
-        <a
-          href="#plans"
-          class="w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white shadow-lg shadow-sky-600/25 transition active:scale-95 flex items-center justify-center space-x-2"
+        <button
+          type="button"
+          onclick={() => scrollToSection('plans')}
+          class="w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white shadow-lg shadow-sky-600/25 transition active:scale-95 flex items-center justify-center space-x-2 cursor-pointer"
         >
           <span>{$t.hero.explorePlans}</span>
           <ArrowRight class="h-4 w-4" />
-        </a>
+        </button>
         <button
           onclick={() => handleBuyPlan()}
           class="w-full sm:w-auto px-6 py-3.5 rounded-xl font-bold text-sm bg-white dark:bg-[#1E3349] hover:bg-sky-50 dark:hover:bg-[#253E58] text-[#1B2D40] dark:text-white border border-[#CCE4F7] dark:border-[#253D56] shadow-sm transition active:scale-95 flex items-center justify-center space-x-2"
@@ -260,7 +306,7 @@
 
   <!-- 4. SECTION: PLANS & SERVICES DIRECTORY -->
   <section id="plans" class="py-16 sm:py-20">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div class="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8">
       <div class="text-center max-w-3xl mx-auto mb-10">
         <span class="text-xs uppercase font-bold tracking-wider text-sky-600 dark:text-sky-400">
           {$t.plans.badge}
@@ -269,194 +315,176 @@
         <p class="text-sm text-[#537292] dark:text-[#8DB0D4] mt-2">{$t.plans.subtitle}</p>
 
         <!-- Category Filter Pills -->
-        <div class="mt-8 inline-flex p-1 bg-white/80 dark:bg-[#152434]/80 border border-[#CCE4F7] dark:border-[#253D56] rounded-xl shadow-xs">
-          <button
-            onclick={() => (activeCategory = 'all')}
-            class="px-4 py-2 rounded-lg text-xs font-bold transition-all {activeCategory === 'all'
-              ? 'bg-sky-600 text-white shadow-xs'
-              : 'text-[#537292] dark:text-[#8DB0D4] hover:text-[#0F1D2B] dark:hover:text-white'}"
-          >
-            {$t.plans.tabAll} ({$plans.length})
-          </button>
-          <button
-            onclick={() => (activeCategory = 'Broadband')}
-            class="px-4 py-2 rounded-lg text-xs font-bold transition-all {activeCategory === 'Broadband'
-              ? 'bg-sky-600 text-white shadow-xs'
-              : 'text-[#537292] dark:text-[#8DB0D4] hover:text-[#0F1D2B] dark:hover:text-white'}"
-          >
-            {$t.plans.tabBroadband}
-          </button>
-          <button
-            onclick={() => (activeCategory = 'Landline')}
-            class="px-4 py-2 rounded-lg text-xs font-bold transition-all {activeCategory === 'Landline'
-              ? 'bg-sky-600 text-white shadow-xs'
-              : 'text-[#537292] dark:text-[#8DB0D4] hover:text-[#0F1D2B] dark:hover:text-white'}"
-          >
-            {$t.plans.tabLandline}
-          </button>
-          <button
-            onclick={() => (activeCategory = 'Dial-Up')}
-            class="px-4 py-2 rounded-lg text-xs font-bold transition-all {activeCategory === 'Dial-Up'
-              ? 'bg-sky-600 text-white shadow-xs'
-              : 'text-[#537292] dark:text-[#8DB0D4] hover:text-[#0F1D2B] dark:hover:text-white'}"
-          >
-            {$t.plans.tabDialup}
-          </button>
-        </div>
-      </div>
-
-      <!-- Plan Cards Grid -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {#each filteredPlans as plan (plan.id)}
-          {@const isHighlight = plan.name.includes('Ultra') || plan.name.includes('Prime')}
-          <div
-            class="rounded-2xl p-6 flex flex-col justify-between transition-all duration-300 relative {isHighlight
-              ? 'bg-gradient-to-b from-white to-sky-50/50 dark:from-[#1A2C3F] dark:to-[#152434] border-2 border-sky-500 dark:border-sky-400 shadow-lg shadow-sky-500/10 scale-102'
-              : 'bg-white dark:bg-[#152434] border border-[#CCE4F7] dark:border-[#253D56] shadow-sm hover:shadow-md'}"
-          >
-            {#if isHighlight}
-              <div class="absolute -top-3 right-6 px-3 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-sky-600 text-white shadow-sm">
-                {$t.plans.popular}
-              </div>
-            {/if}
-
-            <div>
-              <!-- Header -->
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-bold px-2.5 py-1 rounded-md bg-sky-100 dark:bg-[#1E3349] text-sky-700 dark:text-sky-300">
-                  {plan.type}
-                </span>
-                <span class="text-xs text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                  <CheckCircle2 class="h-3.5 w-3.5" />
-                  {$t.plans.readyToInstall}
-                </span>
-              </div>
-
-              <h3 class="font-bold text-lg text-[#0F1D2B] dark:text-white mt-3">{plan.name}</h3>
-              <p class="text-xs text-[#537292] dark:text-[#8DB0D4] mt-1 line-clamp-2">{plan.description}</p>
-
-              <!-- Price Tag -->
-              <div class="mt-4 pt-4 border-t border-[#CCE4F7]/60 dark:border-[#253D56]/60 flex items-baseline gap-1">
-                <span class="text-3xl font-black text-slate-900 dark:text-white tabular-nums">
-                  ${plan.monthlyRental}
-                </span>
-                <span class="text-xs text-[#537292] dark:text-[#8DB0D4] font-medium">
-                  {plan.billingCycle ? `/ ${plan.billingCycle}${plan.validity ? ` (${plan.validity})` : ''}` : $t.plans.perMonth}
-                </span>
-              </div>
-
-              <!-- Highlights -->
-              <div class="mt-5 space-y-2.5 text-xs text-[#2C4764] dark:text-[#94B5D6]">
-                <div class="flex items-center space-x-2">
-                  <Zap class="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
-                  <span><strong>{$t.plans.speed}</strong> {plan.speedOrBandwidth}</span>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <HardDrive class="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
-                  <span><strong>{$t.plans.dataLimit}</strong> {plan.dataLimit}</span>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <ShieldCheck class="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
-                  <span><strong>{$t.plans.securityDeposit}</strong> ${plan.securityDeposit}</span>
-                </div>
-                {#if plan.hourlyCharge !== undefined && plan.hourlyCharge > 0}
-                  <div class="flex items-center space-x-2">
-                    <Clock class="h-4 w-4 text-amber-500 shrink-0" />
-                    <span><strong>{$t.plans.hourlyCharge}</strong> ${plan.hourlyCharge}/hr</span>
-                  </div>
-                {/if}
-                {#if plan.includedHours}
-                  <div class="flex items-center space-x-2">
-                    <Clock class="h-4 w-4 text-amber-500 shrink-0" />
-                    <span><strong>{$language === 'vi' ? 'Số giờ:' : 'Included hours:'}</strong> {plan.includedHours}h</span>
-                  </div>
-                {/if}
-                {#if plan.callRates}
-                  <div class="flex items-start space-x-2">
-                    <Phone class="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
-                    <span>{plan.callRates}</span>
-                  </div>
-                {/if}
-              </div>
-            </div>
-
-            <!-- Subscribe CTA -->
-            <div class="mt-6">
-              <button
-                onclick={() => handleBuyPlan(plan.id)}
-                class="w-full py-2.5 rounded-xl font-bold text-xs transition active:scale-95 flex items-center justify-center space-x-1.5 {isHighlight
-                  ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sm'
-                  : 'bg-[#EDF6FF] dark:bg-[#1E3349] hover:bg-sky-100 dark:hover:bg-[#253E58] text-sky-800 dark:text-sky-200 border border-[#CCE4F7] dark:border-[#253D56]'}"
-              >
-                <span>{$t.plans.subscribeBtn}</span>
-                <ChevronRight class="h-3.5 w-3.5" />
-              </button>
-            </div>
+        <div class="mt-8 flex justify-center">
+          <div class="inline-flex p-1 bg-white/80 dark:bg-[#152434]/80 border border-[#CCE4F7] dark:border-[#253D56] rounded-xl shadow-xs">
+            <button
+              type="button"
+              onclick={() => (activeCategory = 'all')}
+              class="px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer {activeCategory === 'all'
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'text-[#537292] dark:text-[#8DB0D4] hover:text-[#0F1D2B] dark:hover:text-white'}"
+            >
+              {$t.plans.tabAll} ({$plans.length})
+            </button>
+            <button
+              type="button"
+              onclick={() => (activeCategory = 'Broadband')}
+              class="px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer {activeCategory === 'Broadband'
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'text-[#537292] dark:text-[#8DB0D4] hover:text-[#0F1D2B] dark:hover:text-white'}"
+            >
+              {$t.plans.tabBroadband}
+            </button>
+            <button
+              type="button"
+              onclick={() => (activeCategory = 'Landline')}
+              class="px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer {activeCategory === 'Landline'
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'text-[#537292] dark:text-[#8DB0D4] hover:text-[#0F1D2B] dark:hover:text-white'}"
+            >
+              {$t.plans.tabLandline}
+            </button>
+            <button
+              type="button"
+              onclick={() => (activeCategory = 'Dial-Up')}
+              class="px-4 py-2 rounded-lg text-xs font-bold transition-all cursor-pointer {activeCategory === 'Dial-Up'
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'text-[#537292] dark:text-[#8DB0D4] hover:text-[#0F1D2B] dark:hover:text-white'}"
+            >
+              {$t.plans.tabDialup}
+            </button>
           </div>
-        {/each}
-      </div>
-    </div>
-  </section>
-
-  <!-- 5. SECTION: HARDWARE & CPE CATALOG -->
-  <section id="hardware" class="py-16 bg-white/60 dark:bg-[#152434]/60 border-t border-[#CCE4F7] dark:border-[#253D56]">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex flex-col sm:flex-row sm:items-end justify-between mb-10 gap-4">
-        <div>
-          <span class="text-xs uppercase font-bold tracking-wider text-sky-600 dark:text-sky-400">{$t.hardware.badge}</span>
-          <h2 class="text-2xl sm:text-3xl font-bold text-[#0F1D2B] dark:text-white mt-1">{$t.hardware.title}</h2>
-          <p class="text-sm text-[#537292] dark:text-[#8DB0D4] mt-1">{$t.hardware.subtitle}</p>
         </div>
+      </div>
+
+      <!-- Plan Cards Horizontal Carousel with Circular Side Controls & Visible Scrollbar -->
+      <div class="flex items-center gap-2 sm:gap-4 mt-6 w-full">
+        <!-- Circular Left Navigation Button -->
         <button
-          onclick={() => handleBuyPlan()}
-          class="inline-flex items-center space-x-1.5 text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline shrink-0"
+          type="button"
+          onclick={slidePlansLeft}
+          disabled={!canScrollLeft}
+          class="shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-full border border-[#CCE4F7] dark:border-[#253D56] bg-white/95 dark:bg-[#152434]/95 hover:bg-sky-500 hover:text-white dark:hover:bg-sky-600 text-sky-700 dark:text-sky-300 shadow-md flex items-center justify-center transition-all duration-200 disabled:opacity-20 disabled:pointer-events-none cursor-pointer active:scale-95 group focus:outline-hidden"
+          aria-label={$t.plans.slideLeft}
+          title={$t.plans.slideLeft}
         >
-          <span>{$t.hardware.bulkQuote}</span>
-          <ArrowRight class="h-3.5 w-3.5" />
+          <ChevronLeft class="h-6 w-6 sm:h-7 sm:w-7 transition-transform group-hover:-translate-x-0.5" />
+        </button>
+
+        <!-- Horizontal Scrollable Container with Visible Drag Scrollbar -->
+        <div
+          bind:this={plansCarouselRef}
+          onscroll={updatePlansScrollState}
+          class="flex-1 min-w-0 flex gap-4 overflow-x-auto scroll-smooth snap-x snap-mandatory pt-3 pb-5 px-1 plans-carousel-scrollbar"
+          style="display: flex !important;"
+        >
+          {#each filteredPlans as plan (plan.id)}
+            {@const isHighlight = plan.name.includes('Ultra') || plan.name.includes('Prime')}
+            <div
+              class="plan-card snap-start rounded-2xl p-5 flex flex-col justify-between transition-all duration-300 relative {isHighlight
+                ? 'bg-gradient-to-b from-white to-sky-50/50 dark:from-[#1A2C3F] dark:to-[#152434] border-2 border-sky-500 dark:border-sky-400 shadow-lg shadow-sky-500/10'
+                : 'bg-white dark:bg-[#152434] border border-[#CCE4F7] dark:border-[#253D56] shadow-sm hover:shadow-md'}"
+            >
+              {#if isHighlight}
+                <div class="absolute -top-3 right-6 px-3 py-0.5 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-sky-600 text-white shadow-sm">
+                  {$t.plans.popular}
+                </div>
+              {/if}
+
+              <div>
+                <!-- Header -->
+                <div class="flex items-center justify-between gap-1">
+                  <span class="text-xs font-bold px-2 py-0.5 rounded-md bg-sky-100 dark:bg-[#1E3349] text-sky-700 dark:text-sky-300 shrink-0">
+                    {plan.type}
+                  </span>
+                  <span class="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1 shrink-0">
+                    <CheckCircle2 class="h-3.5 w-3.5" />
+                    <span class="truncate">{$t.plans.readyToInstall}</span>
+                  </span>
+                </div>
+
+                <h3 class="font-bold text-base text-[#0F1D2B] dark:text-white mt-2.5 truncate" title={plan.name}>{plan.name}</h3>
+                <p class="text-xs text-[#537292] dark:text-[#8DB0D4] mt-1 line-clamp-2 h-8">{plan.description}</p>
+
+                <!-- Price Tag -->
+                <div class="mt-4 pt-4 border-t border-[#CCE4F7]/60 dark:border-[#253D56]/60 flex items-baseline gap-1">
+                  <span class="text-3xl font-black text-slate-900 dark:text-white tabular-nums">
+                    ${plan.monthlyRental}
+                  </span>
+                  <span class="text-xs text-[#537292] dark:text-[#8DB0D4] font-medium">
+                    {plan.billingCycle ? `/ ${plan.billingCycle}${plan.validity ? ` (${plan.validity})` : ''}` : $t.plans.perMonth}
+                  </span>
+                </div>
+
+                <!-- Highlights -->
+                <div class="mt-5 space-y-2.5 text-xs text-[#2C4764] dark:text-[#94B5D6]">
+                  <div class="flex items-center space-x-2">
+                    <Zap class="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                    <span><strong>{$t.plans.speed}</strong> {plan.speedOrBandwidth}</span>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <HardDrive class="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                    <span><strong>{$t.plans.dataLimit}</strong> {plan.dataLimit}</span>
+                  </div>
+                  <div class="flex items-center space-x-2">
+                    <ShieldCheck class="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                    <span><strong>{$t.plans.securityDeposit}</strong> ${plan.securityDeposit}</span>
+                  </div>
+                  {#if plan.hourlyCharge !== undefined && plan.hourlyCharge > 0}
+                    <div class="flex items-center space-x-2">
+                      <Clock class="h-4 w-4 text-amber-500 shrink-0" />
+                      <span><strong>{$t.plans.hourlyCharge}</strong> ${plan.hourlyCharge}/hr</span>
+                    </div>
+                  {/if}
+                  {#if plan.includedHours}
+                    <div class="flex items-center space-x-2">
+                      <Clock class="h-4 w-4 text-amber-500 shrink-0" />
+                      <span><strong>{$language === 'vi' ? 'Số giờ:' : 'Included hours:'}</strong> {plan.includedHours}h</span>
+                    </div>
+                  {/if}
+                  {#if plan.callRates}
+                    <div class="flex items-start space-x-2">
+                      <Phone class="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+                      <span>{plan.callRates}</span>
+                    </div>
+                  {/if}
+                </div>
+              </div>
+
+              <!-- Subscribe CTA -->
+              <div class="mt-6">
+                <button
+                  type="button"
+                  onclick={() => handleBuyPlan(plan.id)}
+                  class="w-full py-2.5 rounded-xl font-bold text-xs transition active:scale-95 flex items-center justify-center space-x-1.5 cursor-pointer {isHighlight
+                    ? 'bg-sky-600 hover:bg-sky-700 text-white shadow-sm'
+                    : 'bg-[#EDF6FF] dark:bg-[#1E3349] hover:bg-sky-100 dark:hover:bg-[#253E58] text-sky-800 dark:text-sky-200 border border-[#CCE4F7] dark:border-[#253D56]'}"
+                >
+                  <span>{$t.plans.subscribeBtn}</span>
+                  <ChevronRight class="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+          {/each}
+        </div>
+
+        <!-- Circular Right Navigation Button -->
+        <button
+          type="button"
+          onclick={slidePlansRight}
+          disabled={!canScrollRight}
+          class="shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-full border border-[#CCE4F7] dark:border-[#253D56] bg-white/95 dark:bg-[#152434]/95 hover:bg-sky-500 hover:text-white dark:hover:bg-sky-600 text-sky-700 dark:text-sky-300 shadow-md flex items-center justify-center transition-all duration-200 disabled:opacity-20 disabled:pointer-events-none cursor-pointer active:scale-95 group focus:outline-hidden"
+          aria-label={$t.plans.slideRight}
+          title={$t.plans.slideRight}
+        >
+          <ChevronRight class="h-6 w-6 sm:h-7 sm:w-7 transition-transform group-hover:translate-x-0.5" />
         </button>
       </div>
-
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        {#each $inventory.slice(0, 4) as item (item.id)}
-          <div class="p-5 rounded-2xl bg-white dark:bg-[#1E3349] border border-[#CCE4F7] dark:border-[#253D56] shadow-xs hover:shadow-md transition flex flex-col justify-between">
-            <div>
-              <div class="flex items-center justify-between text-xs mb-3">
-                <span class="font-mono text-[10px] text-[#537292] dark:text-[#8DB0D4] bg-[#EDF6FF] dark:bg-[#152434] px-2 py-0.5 rounded border border-[#CCE4F7] dark:border-[#253D56]">
-                  {item.itemCode}
-                </span>
-                <span class="font-semibold text-emerald-600 dark:text-emerald-400 text-[11px]">
-                  {item.stockQuantity} {$t.hardware.inStock}
-                </span>
-              </div>
-
-              <div class="h-10 w-10 rounded-xl bg-sky-50 dark:bg-[#152434] border border-[#CCE4F7] dark:border-[#253D56] flex items-center justify-center text-sky-600 dark:text-sky-400 mb-3">
-                <Server class="h-5 w-5" />
-              </div>
-
-              <h4 class="font-bold text-sm text-[#0F1D2B] dark:text-white line-clamp-2">{item.name}</h4>
-              <p class="text-xs text-[#537292] dark:text-[#8DB0D4] mt-1">{$t.hardware.supplier} {item.supplier}</p>
-            </div>
-
-            <div class="mt-5 pt-3 border-t border-[#CCE4F7]/60 dark:border-[#253D56]/60 flex items-center justify-between">
-              <div>
-                <div class="text-[10px] text-[#537292] dark:text-[#8DB0D4]">{$t.hardware.listPrice}</div>
-                <div class="font-bold text-base text-slate-900 dark:text-white">${item.unitCost}</div>
-              </div>
-              <button
-                onclick={() => handleBuyPlan()}
-                class="px-3 py-1.5 rounded-lg text-xs font-bold bg-sky-600 hover:bg-sky-700 text-white shadow-xs transition active:scale-95"
-              >
-                {$t.hardware.orderBtn}
-              </button>
-            </div>
-          </div>
-        {/each}
-      </div>
     </div>
   </section>
 
-  <!-- 6. SECTION: RETAIL OUTLETS & COVERAGE NETWORK -->
-  <section id="shops" class="py-16">
+  <!-- 5. SECTION: RETAIL OUTLETS & COVERAGE NETWORK -->
+  <section id="shops" class="py-16 bg-white/60 dark:bg-[#152434]/60 border-t border-[#CCE4F7] dark:border-[#253D56]">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="text-center max-w-3xl mx-auto mb-12">
         <span class="text-xs uppercase font-bold tracking-wider text-sky-600 dark:text-sky-400">{$t.shops.badge}</span>
@@ -513,10 +541,10 @@
             {$t.footer.productsCol}
           </h4>
           <ul class="text-xs space-y-2 text-[#537292] dark:text-[#8DB0D4]">
-            <li><a href="#plans" class="hover:underline">Broadband Fiber Ultra Giga</a></li>
-            <li><a href="#plans" class="hover:underline">Enterprise VoIP & Landline</a></li>
-            <li><a href="#plans" class="hover:underline">Dial-Up Telemetry Channels</a></li>
-            <li><a href="#hardware" class="hover:underline">Wi-Fi 6 AX3000 Routers</a></li>
+            <li><button type="button" onclick={() => scrollToSection('plans')} class="hover:underline text-left cursor-pointer bg-transparent border-0 p-0 text-xs text-[#537292] dark:text-[#8DB0D4]">Broadband Fiber Ultra Giga</button></li>
+            <li><button type="button" onclick={() => scrollToSection('plans')} class="hover:underline text-left cursor-pointer bg-transparent border-0 p-0 text-xs text-[#537292] dark:text-[#8DB0D4]">Enterprise VoIP & Landline</button></li>
+            <li><button type="button" onclick={() => scrollToSection('plans')} class="hover:underline text-left cursor-pointer bg-transparent border-0 p-0 text-xs text-[#537292] dark:text-[#8DB0D4]">Dial-Up Telemetry Channels</button></li>
+            <li><button type="button" onclick={() => scrollToSection('plans')} class="hover:underline text-left cursor-pointer bg-transparent border-0 p-0 text-xs text-[#537292] dark:text-[#8DB0D4]">Dedicated Leased Lines</button></li>
           </ul>
         </div>
 
@@ -560,3 +588,58 @@
   </footer>
 </div>
 
+<style>
+  .plan-card {
+    flex-shrink: 0;
+    width: 100%;
+    min-width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  @media (min-width: 640px) {
+    .plan-card {
+      width: calc((100% - 16px) / 2);
+      min-width: calc((100% - 16px) / 2);
+      max-width: calc((100% - 16px) / 2);
+    }
+  }
+  @media (min-width: 1024px) {
+    .plan-card {
+      width: calc((100% - 48px) / 4);
+      min-width: calc((100% - 48px) / 4);
+      max-width: calc((100% - 48px) / 4);
+    }
+  }
+
+  .plans-carousel-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #0284c7 rgba(2, 132, 199, 0.15);
+  }
+  :global(.dark) .plans-carousel-scrollbar {
+    scrollbar-color: #38bdf8 rgba(56, 189, 248, 0.2);
+  }
+  .plans-carousel-scrollbar::-webkit-scrollbar {
+    height: 8px;
+  }
+  .plans-carousel-scrollbar::-webkit-scrollbar-track {
+    background: rgba(2, 132, 199, 0.12);
+    border-radius: 9999px;
+  }
+  :global(.dark) .plans-carousel-scrollbar::-webkit-scrollbar-track {
+    background: rgba(21, 36, 52, 0.8);
+  }
+  .plans-carousel-scrollbar::-webkit-scrollbar-thumb {
+    background: #0284c7;
+    border-radius: 9999px;
+    cursor: pointer;
+  }
+  .plans-carousel-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #0369a1;
+  }
+  :global(.dark) .plans-carousel-scrollbar::-webkit-scrollbar-thumb {
+    background: #38bdf8;
+  }
+  :global(.dark) .plans-carousel-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #7dd3fc;
+  }
+</style>

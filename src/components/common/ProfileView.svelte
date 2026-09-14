@@ -254,42 +254,6 @@
 </script>
 
 <div class="space-y-6 max-w-6xl mx-auto pb-12">
-  <!-- TOP TOOLBAR: Quick Accordion Master Controls -->
-  <div class="flex flex-wrap items-center justify-between gap-3 bg-white/70 dark:bg-slate-900/70 backdrop-blur-md p-3.5 px-5 rounded-2xl border border-slate-200/80 dark:border-slate-800 shadow-xs">
-    <div class="flex items-center space-x-2.5">
-      <div class="h-8 w-8 rounded-lg bg-sky-500/15 dark:bg-sky-500/25 text-sky-600 dark:text-sky-400 flex items-center justify-center font-bold">
-        <User class="h-4 w-4" />
-      </div>
-      <div>
-        <h2 class="text-sm font-bold text-slate-900 dark:text-white">
-          {$language === 'vi' ? 'Cài đặt Hồ sơ & Tài khoản' : 'Profile & Account Settings'}
-        </h2>
-        <p class="text-[11px] text-slate-500 dark:text-slate-400">
-          {$language === 'vi' ? 'Quản lý thông tin cá nhân, hồ sơ nhân sự, mật khẩu và phiên đăng nhập' : 'Manage your personal details, credentials, password, and active sessions'}
-        </p>
-      </div>
-    </div>
-
-    <div class="flex items-center space-x-2">
-      <button
-        type="button"
-        onclick={() => toggleAll(false)}
-        class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
-      >
-        <ChevronUp class="h-3.5 w-3.5" />
-        <span>{$language === 'vi' ? 'Thu gọn tất cả' : 'Collapse All'}</span>
-      </button>
-      <button
-        type="button"
-        onclick={() => toggleAll(true)}
-        class="flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition border border-sky-200 dark:border-sky-800/60"
-      >
-        <ChevronDown class="h-3.5 w-3.5" />
-        <span>{$language === 'vi' ? 'Mở rộng tất cả' : 'Expand All'}</span>
-      </button>
-    </div>
-  </div>
-
   <!-- HERO PROFILE BANNER CARD -->
   <div class="relative overflow-hidden rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-md">
     <!-- Decorative Header Cover Pattern -->

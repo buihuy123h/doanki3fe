@@ -1,39 +1,78 @@
-// Minimal hash-based SPA router for Svelte 5 (replaces react-router v7).
-// Routes mirror App.tsx of the React original: '/', '/home', '/login', '/register',
-// '/admin', '/retail', '/technical', '/accounts', '/user' + fallback to '/'.
+// HTML5 History-based SPA router for Svelte 5 (clean URLs without '#').
+// Routes: '/', '/home', '/login', '/register', '/admin', '/retail', '/technical', '/accounts', '/user' (+ aliases)
 import { writable } from 'svelte/store';
 
+function normalizeRoutePath(pathname: string): string {
+  if (!pathname || pathname === '') return '/';
+  // Strip trailing slash except root
+  return pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+}
+
 export function parsePath(): string {
-  const h = window.location.hash.replace(/^#/, '');
-  const p = h.split('?')[0];
-  return p === '' ? '/' : p;
+  if (typeof window === 'undefined') return '/';
+
+  // Automatically migrate legacy hash URLs if user opens an old bookmark like `/#/login?order=B01`
+  const hash = window.location.hash;
+  if (hash.startsWith('#/')) {
+    const cleanFromHash = hash.replace(/^#/, '');
+    window.history.replaceState({}, '', cleanFromHash);
+    return normalizeRoutePath(window.location.pathname);
+  } else if (hash === '#') {
+    window.history.replaceState({}, '', window.location.pathname + window.location.search);
+  }
+
+  return normalizeRoutePath(window.location.pathname);
 }
 
 export const route = writable<string>(parsePath());
 
-window.addEventListener('hashchange', () => route.set(parsePath()));
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', () => {
+    route.set(parsePath());
+  });
+}
 
 export function navigate(to: string) {
-  window.location.hash = to;
+  if (typeof window === 'undefined') return;
+  // Clean up any accidental leading '#'
+  const cleanTo = to.startsWith('#') ? to.replace(/^#/, '') : to;
+  window.history.pushState({}, '', cleanTo);
+  route.set(parsePath());
 }
 
 export const activeTabOverride = writable<{ path: string; tab: string } | null>(null);
 
 export function navigateTo(path: string, tab?: string) {
+  if (typeof window === 'undefined') return;
+  const cleanPath = path.startsWith('#') ? path.replace(/^#/, '') : path;
   if (tab) {
-    activeTabOverride.set({ path, tab });
-    window.location.hash = `${path}?tab=${tab}`;
+    activeTabOverride.set({ path: cleanPath, tab });
+    window.history.pushState({}, '', `${cleanPath}?tab=${encodeURIComponent(tab)}`);
   } else {
     activeTabOverride.set(null);
-    window.location.hash = path;
+    window.history.pushState({}, '', cleanPath);
   }
+  route.set(parsePath());
 }
 
-// Reads a query param from the hash (e.g. '#/register?plan=plan-bb-01').
+// Reads a query parameter from window.location.search (or fallback to hash if any)
 export function queryParam(name: string): string | null {
-  const h = window.location.hash.replace(/^#/, '');
-  const q = h.split('?')[1];
-  return q ? new URLSearchParams(q).get(name) : null;
+  if (typeof window === 'undefined') return null;
+
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.has(name)) {
+    return urlParams.get(name);
+  }
+
+  // Fallback for legacy query inside hash
+  const hash = window.location.hash.replace(/^#/, '');
+  const q = hash.split('?')[1];
+  if (q) {
+    const hp = new URLSearchParams(q);
+    if (hp.has(name)) return hp.get(name);
+  }
+
+  return null;
 }
 
 // Build a role-isolated dashboard path (mirrors ProtectedRoute's roleRoutes map)

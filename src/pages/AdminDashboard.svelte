@@ -10,7 +10,7 @@
     Users, Store, Truck, Layers, Package, Plus, Search, Edit2, Trash2,
     TrendingUp, CheckCircle2, Phone, MapPin, Wifi, Radio, X, Settings, MessageSquare,
   } from 'lucide-svelte';
-  import type { Employee, Vendor, Plan } from '../types/nexus';
+  import type { Employee, Vendor, Plan, RetailShop, InventoryItem } from '../types/nexus';
   import { toast } from 'svelte-sonner';
   import { queryParam, activeTabOverride } from '../lib/router';
   import { getPlanName, getPlanDescription, getPlanSpeedOrBandwidth, getPlanBillingCycle } from '../lib/planI18n';
@@ -20,7 +20,9 @@
   const {
     employees, addEmployee, updateEmployee, deleteEmployee,
     vendors, addVendor, updateVendor, deleteVendor,
-    retailShops, plans, addPlan, updatePlan, deletePlan, inventory,
+    retailShops, addRetailShop, updateRetailShop, deleteRetailShop,
+    plans, addPlan, updatePlan, deletePlan,
+    inventory, addInventoryItem, updateInventoryItem, deleteInventoryItem,
     feedbacks, respondFeedback,
   } = nexusStore;
   const { t, language } = languageStore;
@@ -105,6 +107,144 @@
     responseText = '';
     respondingId = null;
     toast.success('Response sent to the customer.');
+  };
+
+  // Retail Shop Modal State & Handlers
+  let isShopModalOpen = $state(false);
+  let editingShop = $state<RetailShop | null>(null);
+  let shopFormData = $state({
+    shopCode: '',
+    name: '',
+    city: 'New York',
+    cityCode: '064',
+    address: '',
+    managerName: '',
+    phone: '',
+    operatingHours: '08:00 - 20:00',
+    activeEmployeesCount: 4,
+    totalSubscribersServed: 120,
+  });
+
+  const handleOpenShopModal = (shp?: RetailShop) => {
+    if (shp) {
+      editingShop = shp;
+      shopFormData = {
+        shopCode: shp.shopCode,
+        name: shp.name,
+        city: shp.city,
+        cityCode: shp.cityCode,
+        address: shp.address,
+        managerName: shp.managerName,
+        phone: shp.phone,
+        operatingHours: shp.operatingHours,
+        activeEmployeesCount: shp.activeEmployeesCount,
+        totalSubscribersServed: shp.totalSubscribersServed,
+      };
+    } else {
+      editingShop = null;
+      shopFormData = {
+        shopCode: `SH-0${$retailShops.length + 1}`,
+        name: '',
+        city: 'New York',
+        cityCode: '064',
+        address: '',
+        managerName: '',
+        phone: '',
+        operatingHours: '08:00 - 20:00',
+        activeEmployeesCount: 3,
+        totalSubscribersServed: 0,
+      };
+    }
+    isShopModalOpen = true;
+  };
+
+  const handleSaveShop = (e: SubmitEvent) => {
+    e.preventDefault();
+    if (!shopFormData.name || !shopFormData.address || !shopFormData.managerName) {
+      toast.error($language === 'vi' ? 'Vui lòng điền đầy đủ các thông tin bắt buộc.' : 'Please fill in all required shop details.');
+      return;
+    }
+    if (editingShop) {
+      updateRetailShop(editingShop.id, shopFormData);
+      toast.success($language === 'vi' ? `Đã cập nhật chi nhánh ${shopFormData.name}` : `Updated shop ${shopFormData.name}`);
+    } else {
+      addRetailShop(shopFormData);
+      toast.success($language === 'vi' ? `Đã thêm chi nhánh ${shopFormData.name}` : `Added new shop ${shopFormData.name}`);
+    }
+    isShopModalOpen = false;
+  };
+
+  const handleDeleteShop = (shp: RetailShop) => {
+    if (window.confirm($language === 'vi' ? `Xóa chi nhánh "${shp.name}" (${shp.shopCode})?` : `Remove shop "${shp.name}"?`)) {
+      deleteRetailShop(shp.id);
+      toast.success($language === 'vi' ? `Đã xóa chi nhánh ${shp.name}.` : `Shop ${shp.name} removed.`);
+    }
+  };
+
+  // Stock / Inventory Item Modal State & Handlers
+  let isStockModalOpen = $state(false);
+  let editingStock = $state<InventoryItem | null>(null);
+  let stockFormData = $state({
+    itemCode: '',
+    name: '',
+    category: 'Modem' as InventoryItem['category'],
+    stockQuantity: 50,
+    reorderLevel: 15,
+    unitCost: 65,
+    location: 'Central Depot NYC',
+    supplier: 'Allied Optical Instruments',
+  });
+
+  const handleOpenStockModal = (item?: InventoryItem) => {
+    if (item) {
+      editingStock = item;
+      stockFormData = {
+        itemCode: item.itemCode,
+        name: item.name,
+        category: item.category,
+        stockQuantity: item.stockQuantity,
+        reorderLevel: item.reorderLevel,
+        unitCost: item.unitCost,
+        location: item.location,
+        supplier: item.supplier,
+      };
+    } else {
+      editingStock = null;
+      stockFormData = {
+        itemCode: `EQ-DEV-0${$inventory.length + 1}`,
+        name: '',
+        category: 'Modem',
+        stockQuantity: 25,
+        reorderLevel: 10,
+        unitCost: 80,
+        location: 'Central Depot NYC',
+        supplier: 'Allied Optical Instruments',
+      };
+    }
+    isStockModalOpen = true;
+  };
+
+  const handleSaveStock = (e: SubmitEvent) => {
+    e.preventDefault();
+    if (!stockFormData.name || !stockFormData.itemCode) {
+      toast.error($language === 'vi' ? 'Vui lòng điền tên và mã thiết bị.' : 'Please enter item name and code.');
+      return;
+    }
+    if (editingStock) {
+      updateInventoryItem(editingStock.id, stockFormData);
+      toast.success($language === 'vi' ? `Đã cập nhật vật tư ${stockFormData.name}` : `Updated item ${stockFormData.name}`);
+    } else {
+      addInventoryItem(stockFormData);
+      toast.success($language === 'vi' ? `Đã thêm vật tư ${stockFormData.name}` : `Added item ${stockFormData.name}`);
+    }
+    isStockModalOpen = false;
+  };
+
+  const handleDeleteStock = (item: InventoryItem) => {
+    if (window.confirm($language === 'vi' ? `Xóa vật tư "${item.name}" (${item.itemCode})?` : `Remove item "${item.name}"?`)) {
+      deleteInventoryItem(item.id);
+      toast.success($language === 'vi' ? `Đã xóa vật tư ${item.name}.` : `Item ${item.name} removed.`);
+    }
   };
 
   // Employee Form Submission Handlers
@@ -330,7 +470,11 @@
         ? { label: $t.actions.addVendor, onClick: () => handleOpenVendorModal() }
         : activeTab === 'plans'
           ? { label: $t.actions.addPlan, onClick: () => handleOpenPlanModal() }
-          : { label: $t.actions.newReport, onClick: () => toast.success($language === 'vi' ? 'Đang tạo báo cáo tổng hợp mới...' : 'Creating summary report...') }
+          : activeTab === 'shops'
+            ? { label: $language === 'vi' ? 'Thêm điểm bán lẻ' : 'New Retail Shop', onClick: () => handleOpenShopModal() }
+            : activeTab === 'stock'
+              ? { label: $language === 'vi' ? 'Thêm vật tư thiết bị' : 'New Equipment Item', onClick: () => handleOpenStockModal() }
+              : { label: $t.actions.newReport, onClick: () => toast.success($language === 'vi' ? 'Đang tạo báo cáo tổng hợp mới...' : 'Creating summary report...') }
   }
 >
   <!-- TAB 1: OVERVIEW & SUMMARY -->
@@ -632,6 +776,18 @@
       </div>
 
       <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+        <div class="p-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+          <div class="text-xs font-semibold uppercase text-slate-500">
+            {$language === 'vi' ? `Danh mục vật tư kho (${$inventory.length})` : `Inventory Items (${$inventory.length})`}
+          </div>
+          <button
+            onclick={() => handleOpenStockModal()}
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center space-x-1 shadow-sm"
+          >
+            <Plus class="h-3.5 w-3.5" />
+            <span>{$language === 'vi' ? 'Thêm vật tư thiết bị' : 'Add Item'}</span>
+          </button>
+        </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-sm">
             <thead class="bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
@@ -644,6 +800,7 @@
                 <th class="px-4 py-3">{$language === 'vi' ? 'Ngưỡng đặt lại' : 'Reorder Threshold'}</th>
                 <th class="px-4 py-3">{$language === 'vi' ? 'Đơn giá' : 'Unit Cost'}</th>
                 <th class="px-4 py-3">{$language === 'vi' ? 'Nhà cung cấp' : 'Supplier'}</th>
+                <th class="px-4 py-3 text-right">{$language === 'vi' ? 'Thao tác' : 'Actions'}</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
@@ -669,6 +826,24 @@
                   <td class="px-4 py-3 text-xs text-slate-500 tabular-nums">{item.reorderLevel}</td>
                   <td class="px-4 py-3 font-mono tabular-nums text-xs">${item.unitCost.toFixed(2)}</td>
                   <td class="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{item.supplier}</td>
+                  <td class="px-4 py-3 text-right">
+                    <div class="flex items-center justify-end space-x-1">
+                      <button
+                        onclick={() => handleOpenStockModal(item)}
+                        class="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-indigo-600 transition"
+                        title={$language === 'vi' ? 'Chỉnh sửa vật tư' : 'Edit Item'}
+                      >
+                        <Edit2 class="h-4 w-4" />
+                      </button>
+                      <button
+                        onclick={() => handleDeleteStock(item)}
+                        class="p-1.5 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 hover:text-rose-600 transition"
+                        title={$language === 'vi' ? 'Xóa vật tư' : 'Delete Item'}
+                      >
+                        <Trash2 class="h-4 w-4" />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               {/each}
             </tbody>
@@ -745,6 +920,26 @@
   <!-- TAB 5: RETAIL SHOPS -->
   {#if activeTab === 'shops'}
     <div class="space-y-4">
+      <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div>
+          <h3 class="font-semibold text-slate-900 dark:text-white">
+            {$language === 'vi' ? 'Mạng lưới điểm bán lẻ & Chi nhánh khu vực' : 'Retail Outlet Network & Regional Centers'}
+          </h3>
+          <p class="text-xs text-slate-500 dark:text-slate-400">
+            {$language === 'vi'
+              ? 'Quản lý điểm giao dịch, mã thành phố (3 chữ số trong Account ID), nhân sự phục vụ và chỉ tiêu thuê bao.'
+              : 'Manage outlets, city codes (3 digits in Account ID), staffing and subscriber metrics.'}
+          </p>
+        </div>
+        <button
+          onclick={() => handleOpenShopModal()}
+          class="px-4 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition flex items-center space-x-1.5 shadow-sm"
+        >
+          <Plus class="h-4 w-4" />
+          <span>{$language === 'vi' ? 'Thêm điểm bán lẻ' : 'New Outlet'}</span>
+        </button>
+      </div>
+
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         {#each $retailShops as shop (shop.id)}
           <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
@@ -756,13 +951,26 @@
                 <div>
                   <h3 class="font-bold text-base text-slate-900 dark:text-white">{shop.name}</h3>
                   <p class="text-xs text-slate-500 dark:text-slate-400">
-                    {$language === 'vi' ? `Trung tâm khu vực ${shop.city}` : `${shop.city} Regional Center`}
+                    {$language === 'vi' ? `Trung tâm khu vực ${shop.city} · Mã TP: ${shop.cityCode}` : `${shop.city} Regional Center · City Code: ${shop.cityCode}`}
                   </p>
                 </div>
               </div>
-              <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400">
-                {$language === 'vi' ? 'Đang hoạt động' : 'Active Outlet'}
-              </span>
+              <div class="flex items-center space-x-1">
+                <button
+                  onclick={() => handleOpenShopModal(shop)}
+                  class="p-1.5 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-blue-600 transition"
+                  title={$language === 'vi' ? 'Sửa điểm bán lẻ' : 'Edit Shop'}
+                >
+                  <Edit2 class="h-4 w-4" />
+                </button>
+                <button
+                  onclick={() => handleDeleteShop(shop)}
+                  class="p-1.5 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 hover:text-rose-600 transition"
+                  title={$language === 'vi' ? 'Xóa điểm bán lẻ' : 'Delete Shop'}
+                >
+                  <Trash2 class="h-4 w-4" />
+                </button>
+              </div>
             </div>
 
             <div class="text-xs space-y-1.5 text-slate-600 dark:text-slate-300 border-t border-b border-slate-100 dark:border-slate-800 py-3">
@@ -1416,6 +1624,242 @@
               {editingPlan
                 ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
                 : ($language === 'vi' ? 'Xác nhận gói cước' : 'Confirm Plan')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {/if}
+  <!-- RETAIL SHOP MODAL -->
+  {#if isShopModalOpen}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 backdrop-blur-xs p-4">
+      <div class="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-xl space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <Store class="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <h3 class="font-bold text-base text-slate-900 dark:text-white">
+              {editingShop
+                ? ($language === 'vi' ? 'Chỉnh sửa điểm bán lẻ' : 'Edit Retail Shop')
+                : ($language === 'vi' ? 'Thêm điểm bán lẻ mới' : 'Add New Retail Shop')}
+            </h3>
+          </div>
+          <button onclick={() => (isShopModalOpen = false)} class="p-1 text-slate-400 hover:text-slate-600">
+            <X class="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onsubmit={handleSaveShop} class="space-y-4 text-xs">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Mã chi nhánh *' : 'Shop Code *'}
+              </label>
+              <input type="text" required bind:value={shopFormData.shopCode} placeholder="SH-01"
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Mã thành phố (3 số) *' : 'City Code (3-digit) *'}
+              </label>
+              <input type="text" maxlength="3" required bind:value={shopFormData.cityCode} placeholder="064"
+                class="w-full px-3 py-2 font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Tên điểm giao dịch *' : 'Shop / Outlet Name *'}
+              </label>
+              <input type="text" required bind:value={shopFormData.name} placeholder="Downtown Flagship"
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Thành phố *' : 'City / Metro Region *'}
+              </label>
+              <input type="text" required bind:value={shopFormData.city} placeholder="New York"
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              {$language === 'vi' ? 'Địa chỉ chi tiết *' : 'Street Address *'}
+            </label>
+            <input type="text" required bind:value={shopFormData.address} placeholder="100 Broadway, New York, NY 10005"
+              class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Quản lý chi nhánh *' : 'Store Manager *'}
+              </label>
+              <input type="text" required bind:value={shopFormData.managerName} placeholder="David Chen"
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Số điện thoại *' : 'Phone *'}
+              </label>
+              <input type="tel" required bind:value={shopFormData.phone} placeholder="+1 (212) 555-0199"
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Giờ mở cửa' : 'Hours'}
+              </label>
+              <input type="text" bind:value={shopFormData.operatingHours} placeholder="08:00 - 20:00"
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Nhân sự' : 'Staff Count'}
+              </label>
+              <input type="number" min="1" bind:value={shopFormData.activeEmployeesCount}
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Thuê bao' : 'Subscribers'}
+              </label>
+              <input type="number" min="0" bind:value={shopFormData.totalSubscribersServed}
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+          </div>
+
+          <div class="flex justify-end space-x-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onclick={() => (isShopModalOpen = false)}
+              class="px-4 py-2 rounded-lg text-sm border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            >
+              {$language === 'vi' ? 'Hủy' : 'Cancel'}
+            </button>
+            <button
+              type="submit"
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition shadow"
+            >
+              {editingShop
+                ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
+                : ($language === 'vi' ? 'Thêm điểm bán lẻ' : 'Confirm Shop')}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {/if}
+
+  <!-- INVENTORY / STOCK MODAL -->
+  {#if isStockModalOpen}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 backdrop-blur-xs p-4">
+      <div class="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 shadow-xl space-y-4">
+        <div class="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div class="flex items-center space-x-2">
+            <Package class="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+            <h3 class="font-bold text-base text-slate-900 dark:text-white">
+              {editingStock
+                ? ($language === 'vi' ? 'Chỉnh sửa vật tư thiết bị' : 'Edit Equipment Item')
+                : ($language === 'vi' ? 'Thêm vật tư thiết bị mới' : 'Add New Equipment Item')}
+            </h3>
+          </div>
+          <button onclick={() => (isStockModalOpen = false)} class="p-1 text-slate-400 hover:text-slate-600">
+            <X class="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onsubmit={handleSaveStock} class="space-y-4 text-xs">
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Mã vật tư *' : 'Item Code *'}
+              </label>
+              <input type="text" required bind:value={stockFormData.itemCode} placeholder="EQ-FBR-01"
+                class="w-full px-3 py-2 font-mono bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Danh mục thiết bị *' : 'Device Category *'}
+              </label>
+              <select bind:value={stockFormData.category} class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm">
+                <option value="Modem">Modem</option>
+                <option value="Router">Router</option>
+                <option value="Fiber ONT">Fiber ONT</option>
+                <option value="Splitter">Splitter</option>
+                <option value="Patch Cord">Patch Cord</option>
+                <option value="VoIP Adapter">VoIP Adapter</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              {$language === 'vi' ? 'Tên thiết bị / Vật tư *' : 'Equipment Name *'}
+            </label>
+            <input type="text" required bind:value={stockFormData.name} placeholder="Nexus Gigabit Dual-Band WiFi-6 Router"
+              class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+          </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Số lượng tồn' : 'Stock Qty'}
+              </label>
+              <input type="number" min="0" bind:value={stockFormData.stockQuantity}
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Mức tối thiểu' : 'Reorder Level'}
+              </label>
+              <input type="number" min="0" bind:value={stockFormData.reorderLevel}
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Đơn giá ($)' : 'Unit Cost ($)'}
+              </label>
+              <input type="number" min="0" step="0.01" bind:value={stockFormData.unitCost}
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Vị trí kho' : 'Depot Location'}
+              </label>
+              <input type="text" bind:value={stockFormData.location} placeholder="Central Depot NYC"
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                {$language === 'vi' ? 'Nhà cung ứng' : 'Supplier'}
+              </label>
+              <input type="text" bind:value={stockFormData.supplier} placeholder="Allied Optical Instruments"
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+          </div>
+
+          <div class="flex justify-end space-x-3 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onclick={() => (isStockModalOpen = false)}
+              class="px-4 py-2 rounded-lg text-sm border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            >
+              {$language === 'vi' ? 'Hủy' : 'Cancel'}
+            </button>
+            <button
+              type="submit"
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow"
+            >
+              {editingStock
+                ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
+                : ($language === 'vi' ? 'Thêm vật tư' : 'Confirm Item')}
             </button>
           </div>
         </form>

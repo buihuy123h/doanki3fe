@@ -181,7 +181,7 @@ const INITIAL_PLANS: Plan[] = [
   // ---- Landline (telephone only) ----
   {
     id: 'plan-ll-local-y',
-    name: 'Landline Local — Unlimited (Yearly)',
+    name: 'Landline Local - Unlimited (Yearly)',
     type: 'Landline',
     speedOrBandwidth: 'PSTN Voice',
     monthlyRental: 75,
@@ -195,7 +195,7 @@ const INITIAL_PLANS: Plan[] = [
   },
   {
     id: 'plan-ll-local-m',
-    name: 'Landline Local — Monthly',
+    name: 'Landline Local - Monthly',
     type: 'Landline',
     speedOrBandwidth: 'PSTN Voice',
     monthlyRental: 35,
@@ -209,7 +209,7 @@ const INITIAL_PLANS: Plan[] = [
   },
   {
     id: 'plan-ll-std-m',
-    name: 'Landline STD — Monthly',
+    name: 'Landline STD - Monthly',
     type: 'Landline',
     speedOrBandwidth: 'PSTN Voice',
     monthlyRental: 125,
@@ -223,7 +223,7 @@ const INITIAL_PLANS: Plan[] = [
   },
   {
     id: 'plan-ll-std-h',
-    name: 'Landline STD — Half-Yearly',
+    name: 'Landline STD - Half-Yearly',
     type: 'Landline',
     speedOrBandwidth: 'PSTN Voice',
     monthlyRental: 420,
@@ -237,7 +237,7 @@ const INITIAL_PLANS: Plan[] = [
   },
   {
     id: 'plan-ll-std-y',
-    name: 'Landline STD — Yearly',
+    name: 'Landline STD - Yearly',
     type: 'Landline',
     speedOrBandwidth: 'PSTN Voice',
     monthlyRental: 780,
@@ -544,7 +544,7 @@ const INITIAL_ORDERS: Order[] = [
     idProofNumber: 'DL-NY-2940192',
     connectionType: 'Landline',
     planId: 'plan-ll-std-m',
-    planName: 'Landline STD — Monthly',
+    planName: 'Landline STD - Monthly',
     retailOutletCode: 'SH-01',
     retailEmployeeName: 'David Chen',
     createdAt: '2026-09-02 09:00',
@@ -592,7 +592,7 @@ const INITIAL_CONNECTIONS: Connection[] = [
     customerEmail: 'office@highlineconsulting.com',
     installationAddress: '55 Hudson Yards, Fl 18, New York, NY 10001',
     connectionType: 'Landline',
-    planName: 'Landline STD — Monthly',
+    planName: 'Landline STD - Monthly',
     monthlyRental: 125,
     securityDeposit: 250,
     status: 'Active',
@@ -773,7 +773,7 @@ const INITIAL_BILLS: Bill[] = [
     billingMonth: 'September 2026',
     billingDate: '2026-09-02',
     dueDate: '2026-09-22',
-    planName: 'Landline STD — Monthly',
+    planName: 'Landline STD - Monthly',
     connectionType: 'Landline',
     securityDeposit: 250,
     monthlyRental: 125,
@@ -819,9 +819,9 @@ const INITIAL_FEEDBACKS: Feedback[] = [
     accountId: 'D064-000000000003',
     orderId: 'D0000000006',
     customerName: 'Retro Arcade Lounge LLC',
-    rating: 3,
-    category: 'Support',
-    message: 'Took two calls to get the seasonal suspension applied. Please make this self-service.',
+    rating: 4,
+    category: 'Billing',
+    message: 'Deposit structure explained well during corporate sign up.',
     createdAt: '2026-09-01 11:05',
   },
 ];
@@ -842,7 +842,13 @@ const INITIAL_SETTINGS: SystemSettings = {
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
     const saved = localStorage.getItem(key);
-    return saved ? JSON.parse(saved) : fallback;
+    if (!saved) return fallback;
+    const sanitized = saved
+      .replace(/â€“/g, '-')
+      .replace(/â€”/g, '-')
+      .replace(/—/g, '-')
+      .replace(/–/g, '-');
+    return JSON.parse(sanitized);
   } catch {
     return fallback;
   }
@@ -860,6 +866,17 @@ function createNexusStore() {
   // Bumped when the seed schema changes so stale localStorage is not reloaded.
   const V = '_v2';
   const currentRole = writable<RoleType>('admin');
+  const dbConnected = writable<boolean>(false);
+  const dbInfo = writable<{
+    status: string;
+    server: string;
+    database: string;
+    tableCount: number;
+    planCount: number;
+    orderCount: number;
+  } | null>(null);
+  const isSyncing = writable<boolean>(false);
+
   const plans = writable<Plan[]>(loadFromStorage('nexus_plans' + V, INITIAL_PLANS));
   const employees = writable<Employee[]>(loadFromStorage('nexus_employees' + V, INITIAL_EMPLOYEES));
   const vendors = writable<Vendor[]>(loadFromStorage('nexus_vendors' + V, INITIAL_VENDORS));
@@ -922,6 +939,12 @@ function createNexusStore() {
   const addRetailShop = (shop: Omit<RetailShop, 'id'>) => {
     retailShops.update((prev) => [{ ...shop, id: `sh-${Date.now()}` }, ...prev]);
   };
+  const updateRetailShop = (id: string, updated: Partial<RetailShop>) => {
+    retailShops.update((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+  };
+  const deleteRetailShop = (id: string) => {
+    retailShops.update((prev) => prev.filter((s) => s.id !== id));
+  };
 
   // ---- Inventory Handlers ----
   const updateInventoryStock = (id: string, delta: number) => {
@@ -933,6 +956,12 @@ function createNexusStore() {
   };
   const addInventoryItem = (item: Omit<InventoryItem, 'id'>) => {
     inventory.update((prev) => [{ ...item, id: `inv-${Date.now()}` }, ...prev]);
+  };
+  const updateInventoryItem = (id: string, updated: Partial<InventoryItem>) => {
+    inventory.update((prev) => prev.map((item) => (item.id === id ? { ...item, ...updated } : item)));
+  };
+  const deleteInventoryItem = (id: string) => {
+    inventory.update((prev) => prev.filter((item) => item.id !== id));
   };
 
   // ---- Order Handlers ----
@@ -950,10 +979,20 @@ function createNexusStore() {
     | 'internetFeasible'
   > & { bulkConnectionsCount?: number };
 
-  const placeOrder = (orderData: PlaceOrderInput): Order => {
+  const nextOrderIdSerial = (): number => {
     const currentOrders = get(orders);
-    const nextCount = currentOrders.length + 1;
-    const newId = generateOrderId(orderData.connectionType, nextCount);
+    let maxSerial = 0;
+    for (const o of currentOrders) {
+      const num = parseInt(o.id.slice(1), 10);
+      if (!isNaN(num) && num > maxSerial) {
+        maxSerial = num;
+      }
+    }
+    return Math.max(currentOrders.length, maxSerial) + 1;
+  };
+
+  const placeOrder = (orderData: PlaceOrderInput): Order => {
+    const newId = generateOrderId(orderData.connectionType, nextOrderIdSerial());
     const now = new Date();
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -976,17 +1015,28 @@ function createNexusStore() {
     return newOrder;
   };
 
-  // Account ID serial: 1 + number of IDs already issued anywhere.
+  // Account ID serial: next strictly increasing number across all connections and orders
   const nextAccountIdSerial = (): number => {
-    const used = new Set<string>();
-    get(connections).forEach((c) => used.add(accountIdKey(c.accountId)));
-    get(orders).forEach((o) => o.assignedAccountId && used.add(accountIdKey(o.assignedAccountId)));
-    return used.size + 1;
+    let maxSerial = 0;
+    const checkSerial = (rawId: string | undefined) => {
+      if (!rawId) return;
+      const clean = accountIdKey(rawId);
+      // Format: [type(1)][city(3)][serial(12)] -> last 12 digits
+      if (clean.length >= 16) {
+        const serialNum = parseInt(clean.slice(4), 10);
+        if (!isNaN(serialNum) && serialNum > maxSerial) {
+          maxSerial = serialNum;
+        }
+      }
+    };
+    get(connections).forEach((c) => checkSerial(c.accountId));
+    get(orders).forEach((o) => checkSerial(o.assignedAccountId));
+    return Math.max(get(connections).length, maxSerial) + 1;
   };
 
   const cityCodeForOrder = (ord: Order): string => {
     const shop = get(retailShops).find((s) => s.shopCode === ord.retailOutletCode);
-    return shop?.cityCode ?? '999';
+    return shop?.cityCode ?? '064';
   };
 
   const updateOrderStatus = (
@@ -1229,6 +1279,26 @@ function createNexusStore() {
       })
     );
 
+    // SPEC: "Chỉ postpaid: bill được sinh ra, và trạng thái kết nối phụ thuộc vào bill"
+    // When bill is settled in full, automatically restore any Temporarily Inactive connection to Active.
+    if (updatedBill && (updatedBill as Bill).status === 'Paid') {
+      const targetAcc = (updatedBill as Bill).accountId;
+      const now = new Date();
+      const stamp = `${now.toISOString().slice(0, 10)} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+      connections.update((prev) =>
+        prev.map((conn) =>
+          accountIdKey(conn.accountId) === accountIdKey(targetAcc) && conn.status === 'Temporarily Inactive'
+            ? {
+                ...conn,
+                status: 'Active' as ConnectionStatus,
+                lastUpdated: stamp,
+                lastStatusReason: `Công nợ hóa đơn ${(updatedBill as Bill).invoiceNumber} đã được thanh toán toàn bộ — Tự động kích hoạt lại đường truyền`,
+              }
+            : conn
+        )
+      );
+    }
+
     return updatedBill;
   };
 
@@ -1260,15 +1330,65 @@ function createNexusStore() {
     );
   };
 
+  // ---- SQL Server Database Sync ----
+  const syncWithDatabase = async (): Promise<boolean> => {
+    isSyncing.set(true);
+    try {
+      const res = await fetch('/api/nexus/all');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.plans && data.plans.length > 0) {
+          plans.set(data.plans);
+          if (data.retailShops && data.retailShops.length > 0) retailShops.set(data.retailShops);
+          if (data.employees && data.employees.length > 0) employees.set(data.employees);
+          if (data.vendors && data.vendors.length > 0) vendors.set(data.vendors);
+          if (data.inventory && data.inventory.length > 0) inventory.set(data.inventory);
+          if (data.orders && data.orders.length > 0) orders.set(data.orders);
+          if (data.connections && data.connections.length > 0) connections.set(data.connections);
+          if (data.equipments && data.equipments.length > 0) equipments.set(data.equipments);
+          if (data.bills && data.bills.length > 0) bills.set(data.bills);
+          if (data.feedbacks && data.feedbacks.length > 0) feedbacks.set(data.feedbacks);
+          if (data.settings) settings.set(data.settings);
+
+          dbConnected.set(true);
+          dbInfo.set({
+            status: 'Connected',
+            server: data.server || '(localdb)\\MSSQLLocalDB',
+            database: data.database || 'NexusSystem',
+            tableCount: 14,
+            planCount: data.plans.length,
+            orderCount: data.orders ? data.orders.length : 7,
+          });
+          console.log('[Nexus] Successfully hydrated state from Microsoft SQL Server [NexusSystem]');
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn('[Nexus] Could not reach SQL Server bridge, using local storage state:', err);
+    } finally {
+      isSyncing.set(false);
+    }
+    return false;
+  };
+
+  // Auto-trigger sync on browser startup
+  if (typeof window !== 'undefined') {
+    setTimeout(() => {
+      syncWithDatabase();
+    }, 150);
+  }
+
   // ---- Settings Handlers ----
   const updateSettings = (newSettings: Partial<SystemSettings>) => {
     settings.update((prev) => ({ ...prev, ...newSettings }));
   };
 
-
-
   return {
     currentRole,
+    dbConnected,
+    dbInfo,
+    isSyncing,
+    syncWithDatabase,
     plans,
     employees,
     vendors,
@@ -1290,8 +1410,12 @@ function createNexusStore() {
     updateVendor,
     deleteVendor,
     addRetailShop,
+    updateRetailShop,
+    deleteRetailShop,
     updateInventoryStock,
     addInventoryItem,
+    updateInventoryItem,
+    deleteInventoryItem,
     placeOrder,
     updateOrderStatus,
     provisionConnectionForOrder,

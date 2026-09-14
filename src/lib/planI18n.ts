@@ -17,9 +17,14 @@ const PLAN_NAME_VI: Record<string, string> = {
   'plan-du-28': 'Quay số Không giới hạn 28 Kbps',
   'plan-du-56': 'Quay số Không giới hạn 56 Kbps',
   // Landline
-  'plan-ll-std': 'Điện thoại cố định Tiêu chuẩn Gia đình',
-  'plan-ll-com': 'Điện thoại cố định Doanh nghiệp Thương mại',
-  'plan-ll-val': 'Điện thoại cố định Gói Tiết kiệm Gia đình',
+  'plan-ll-local-y': 'Điện thoại Cố định Nội hạt - Trọn gói (Năm)',
+  'plan-ll-local-m': 'Điện thoại Cố định Nội hạt - Hàng tháng',
+  'plan-ll-std-m': 'Điện thoại Cố định STD - Hàng tháng',
+  'plan-ll-std-h': 'Điện thoại Cố định STD - Nửa năm',
+  'plan-ll-std-y': 'Điện thoại Cố định STD - Hàng năm',
+  'plan-ll-std': 'Điện thoại Cố định Tiêu chuẩn Gia đình',
+  'plan-ll-com': 'Điện thoại Cố định Doanh nghiệp Thương mại',
+  'plan-ll-val': 'Điện thoại Cố định Gói Tiết kiệm Gia đình',
 };
 
 const PLAN_DESC_VI: Record<string, string> = {
@@ -36,18 +41,36 @@ const PLAN_DESC_VI: Record<string, string> = {
   'plan-du-h120': 'Gói quay số trả trước 120 giờ truy cập modem PSTN, thời hạn 6 tháng.',
   'plan-du-28': 'Truy cập quay số không giới hạn tốc độ 28 Kbps. Tùy chọn thanh toán theo quý $150.',
   'plan-du-56': 'Truy cập quay số không giới hạn tốc độ 56 Kbps chuẩn V.90/V.92. Gói quý $180.',
+  'plan-ll-local-y': 'Gói thoại nội hạt trọn gói thanh toán theo năm $75. Cước cuộc gọi 55¢/phút.',
+  'plan-ll-local-m': 'Gói thoại nội hạt thuê bao hàng tháng $35. Cước cuộc gọi 75¢/phút.',
+  'plan-ll-std-m': 'Gói thoại STD thuê bao hàng tháng $125. Cước gọi nội hạt 70¢, liên tỉnh STD $2.25/phút, tin nhắn $1.00/phút.',
+  'plan-ll-std-h': 'Gói thoại STD thuê bao nửa năm $420. Cước gọi nội hạt 60¢, liên tỉnh STD $2.00/phút, tin nhắn $1.15/phút.',
+  'plan-ll-std-y': 'Gói thoại STD thuê bao năm. Cước gọi nội hạt 60¢, liên tỉnh STD $1.75/phút, tin nhắn $1.25/phút.',
   'plan-ll-std': 'Điện thoại cố định gia đình với kết nối nội hạt & đường dài. Tính cước 2 tháng/lần.',
   'plan-ll-com': 'Đường dây thoại doanh nghiệp hỗ trợ định tuyến đa số, săn dòng máy nhánh và kết nối tổng đài PBX.',
   'plan-ll-val': 'Gói thoại tiết kiệm tích hợp sẵn 100 phút gọi miễn phí hàng tháng.',
 };
 
+export function cleanPlanName(name: string): string {
+  return (name || '')
+    .replace(/â€“/g, '-')
+    .replace(/â€”/g, '-')
+    .replace(/—/g, '-')
+    .replace(/–/g, '-');
+}
+
 export function getPlanName(plan: Plan | { id?: string; name: string }, lang: 'vi' | 'en'): string {
-  if (lang === 'en') return plan.name;
+  if (lang === 'en') {
+    return cleanPlanName(plan.name);
+  }
   if (plan.id && PLAN_NAME_VI[plan.id]) {
     return PLAN_NAME_VI[plan.id];
   }
   // Generic translation fallback
   return plan.name
+    .replace(/â€“/g, '-')
+    .replace(/—/g, '-')
+    .replace(/–/g, '-')
     .replace(/Broadband/g, 'Cáp quang')
     .replace(/Dial-Up/g, 'Quay số')
     .replace(/Landline/g, 'Cố định')
