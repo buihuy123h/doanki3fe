@@ -1,5 +1,6 @@
 <script lang="ts">
   // Mirrors pages/TechnicalDashboard.tsx of the React original.
+  import { onMount } from "svelte";
   import { nexusStore } from "../context/NexusContext";
   import { languageStore } from "../context/LanguageContext";
   import DashboardLayout from "../components/layout/DashboardLayout.svelte";
@@ -31,8 +32,12 @@
     ArrowRight,
     ExternalLink,
     FileText,
+    CalendarClock,
+    History,
+    PackageOpen,
   } from "lucide-svelte";
   import type {
+    Connection,
     Order,
     ConnectionStatus,
     Equipment,
@@ -43,6 +48,19 @@
   import ProfileView from "../components/common/ProfileView.svelte";
   import { queryParam, activeTabOverride } from "../lib/router";
   import { getPlanName } from "../lib/planI18n";
+  import {
+    TechnicalApiError,
+    type ConnectionActivityLog,
+    adjustInventoryStock,
+    changeConnectionStatus,
+    createEquipment,
+    getConnectionActivityLogs,
+    loadTechnicalWorkspace,
+    provideConnection,
+    updateEquipment,
+    updateFeasibility,
+    updateInstallationSchedule,
+  } from "../lib/technicalApi";
 
   type TechTab =
     | "feasibility-queue"
@@ -53,14 +71,71 @@
 
   const {
     orders,
-    updateOrderStatus,
-    provisionConnectionForOrder,
     connections,
-    updateConnectionStatus,
     equipments,
-    addEquipment,
+    inventory,
+    employees,
   } = nexusStore;
   const { t, language } = languageStore;
+
+  let isApiLoading = $state(true);
+  let apiError = $state("");
+  let pendingAction = $state("");
+  let hasLoadedApiData = $state(false);
+
+  const technicalEmployeeId = $derived(
+    $employees.find(
+      (employee) =>
+        employee.status === "Active" && employee.role === "Field Engineer",
+    )?.id ?? "emp-03",
+  );
+
+  const errorMessage = (error: unknown) =>
+    error instanceof TechnicalApiError || error instanceof Error
+      ? error.message
+      : "Không thể kết nối tới API kỹ thuật";
+
+  const refreshTechnicalData = async () => {
+    isApiLoading = true;
+    try {
+      const workspace = await loadTechnicalWorkspace();
+      orders.set(workspace.orders);
+      connections.set(workspace.connections);
+      equipments.set(workspace.equipments);
+      inventory.set(workspace.inventory);
+      apiError = "";
+      hasLoadedApiData = true;
+
+      if (selectedConnection) {
+        selectedConnection =
+          workspace.connections.find(
+            (connection) => connection.accountId === selectedConnection?.accountId,
+          ) ?? workspace.connections[0] ?? null;
+      } else {
+        selectedConnection = workspace.connections[0] ?? null;
+      }
+
+      return workspace;
+    } catch (error) {
+      apiError = errorMessage(error);
+      if (!hasLoadedApiData) {
+        orders.set([]);
+        connections.set([]);
+        equipments.set([]);
+        inventory.set([]);
+        selectedConnection = null;
+      }
+      throw error;
+    } finally {
+      isApiLoading = false;
+    }
+  };
+
+  onMount(() => {
+    refreshTechnicalData().catch((error) => {
+      toast.error(errorMessage(error));
+    });
+  });
 
   // Active technical sidebar tab
   let activeTab = $state<TechTab>("feasibility-queue");
@@ -115,6 +190,19 @@
   );
   let statusChangeReason = $state("");
   let testingPingAccountId = $state<string | null>(null);
+  let activityLogs = $state<Record<string, ConnectionActivityLog[]>>({});
+  let activityLogsLoading = $state<string | null>(null);
+
+  // INSTALLATION SCHEDULE STATE
+  let isScheduleModalOpen = $state(false);
+  let targetOrderForSchedule = $state<Order | null>(null);
+  let scheduledInstallDate = $state("");
+
+  // INVENTORY ADJUSTMENT STATE
+  let isStockModalOpen = $state(false);
+  let targetInventoryId = $state("");
+  let stockQuantityChange = $state(1);
+  let stockAdjustmentReason = $state("");
 
   // Derived filtered connections for tech management list
   const filteredConnections = $derived(
@@ -136,6 +224,18 @@
     }),
   );
 
+  const loadActivityLogs = async (accountId: string) => {
+    activityLogsLoading = accountId;
+    try {
+      const logs = await getConnectionActivityLogs(accountId);
+      activityLogs = { ...activityLogs, [accountId]: logs };
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      activityLogsLoading = null;
+    }
+  };
+
   const toggleDetailDropdown = (accountId: string) => {
     if (expandedAccountId === accountId) {
       expandedAccountId = null;
@@ -145,6 +245,7 @@
       if (found) {
         selectedConnection = found;
       }
+      loadActivityLogs(accountId);
     }
   };
 
@@ -179,6 +280,8 @@
   // EQUIPMENT TRACKER STATE (Log new modems/routers)
   let isAddEquipmentModalOpen = $state(false);
   let newEquipmentForm = $state({
+    inventoryId: "",
+    storeId: "",
     serialNumber: "",
     macAddress: "",
     deviceModel: "Nexus Wi-Fi 6 AX3000 Dual-Band Router",
@@ -192,8 +295,22 @@
     $equipments.filter((eq) => eq.status === "In Stock"),
   );
 
+  const provisioningEquipments = $derived(
+    targetOrderForProvision
+      ? inStockEquipments.filter(
+          (equipment) =>
+            !equipment.storeId ||
+            equipment.storeId === targetOrderForProvision?.retailOutletCode,
+        )
+      : inStockEquipments,
+  );
+
+  const availableStoreIds = $derived(
+    [...new Set($orders.map((order) => order.retailOutletCode).filter(Boolean))].sort(),
+  );
+
   // ACTION HANDLERS: ORDER FEASIBILITY QUEUE
-  const handleMarkFeasible = (order: Order) => {
+  const handleMarkFeasible = async (order: Order) => {
     // Dial-Up needs BOTH legs; other types need the single internet check.
     if (order.connectionType === "Dial-Up") {
       const legs = legFor(order);
@@ -213,23 +330,35 @@
           : "Both legs verified: landline loop tested OK and internet DSLAM port available. Attenuation -16.5 dBm."
         : "Field inspection verified: line loop within 250m, attenuation -16.5 dBm. DP Box capacity confirmed OK.";
 
-    // Confirming feasibility is what issues the customer's 16-char Account ID.
-    const updated = updateOrderStatus(
-      order.id,
-      "Feasible",
-      note,
-      undefined,
-      undefined,
-      undefined,
-      order.connectionType === "Dial-Up"
-        ? { landline: landlineLegDone(order), internet: legFor(order).internet }
-        : undefined,
-    );
-    toast.success(
-      updated?.assignedAccountId
-        ? `Order ${order.id} marked as FEASIBLE. Account ID issued: ${updated.assignedAccountId}`
-        : `Order ${order.id} marked as FEASIBLE. Ready for dispatch.`,
-    );
+    if (pendingAction) return;
+    pendingAction = `feasibility:${order.id}`;
+    try {
+      const legs = legFor(order);
+      const result = await updateFeasibility(order.id, {
+        isFeasible: true,
+        checkedBy: technicalEmployeeId,
+        notes: note,
+        cableDistanceMeters: order.cableDistanceMeters ?? 250,
+        dpBoxCapacity: order.dpBoxCapacity ?? "Port available / DP-Scan",
+        signalLossDbm: order.signalLossDbm ?? -16.5,
+        ...(order.connectionType === "Dial-Up"
+          ? {
+              landlineFeasible: landlineLegDone(order),
+              internetFeasible: legs.internet,
+            }
+          : {}),
+      });
+      await refreshTechnicalData();
+      toast.success(
+        result.assignedAccountId
+          ? `Order ${order.id} marked as FEASIBLE. Account ID issued: ${result.assignedAccountId}`
+          : `Order ${order.id} marked as FEASIBLE. Ready for dispatch.`,
+      );
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      pendingAction = "";
+    }
   };
 
   const handleOpenNotFeasibleModal = (order: Order) => {
@@ -237,18 +366,32 @@
     isNotFeasibleModalOpen = true;
   };
 
-  const handleConfirmNotFeasible = (e: SubmitEvent) => {
+  const handleConfirmNotFeasible = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!targetOrderForRejection) return;
 
-    updateOrderStatus(
-      targetOrderForRejection.id,
-      "Not Feasible",
-      rejectionReason,
-    );
-    toast.error(`Order ${targetOrderForRejection.id} flagged as NOT FEASIBLE.`);
-    isNotFeasibleModalOpen = false;
-    targetOrderForRejection = null;
+    if (pendingAction) return;
+    const order = targetOrderForRejection;
+    pendingAction = `reject:${order.id}`;
+    try {
+      await updateFeasibility(order.id, {
+        isFeasible: false,
+        checkedBy: technicalEmployeeId,
+        notes: rejectionReason,
+        rejectionReason,
+        cableDistanceMeters: order.cableDistanceMeters,
+        dpBoxCapacity: order.dpBoxCapacity,
+        signalLossDbm: order.signalLossDbm,
+      });
+      await refreshTechnicalData();
+      toast.error(`Order ${order.id} flagged as NOT FEASIBLE.`);
+      isNotFeasibleModalOpen = false;
+      targetOrderForRejection = null;
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      pendingAction = "";
+    }
   };
 
   // Tracking connection progress per order
@@ -274,15 +417,19 @@
 
   const handleOpenProvisionModal = (order: Order) => {
     targetOrderForProvision = order;
-    if (inStockEquipments.length > 0) {
-      selectedDeviceSerial = inStockEquipments[0].serialNumber;
+    const available = inStockEquipments.filter(
+      (equipment) =>
+        !equipment.storeId || equipment.storeId === order.retailOutletCode,
+    );
+    if (available.length > 0) {
+      selectedDeviceSerial = available[0].serialNumber;
     } else {
       selectedDeviceSerial = "";
     }
     isProvisionModalOpen = true;
   };
 
-  const handleConfirmConnectionProvided = (e: SubmitEvent) => {
+  const handleConfirmConnectionProvided = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!targetOrderForProvision) return;
 
@@ -296,75 +443,148 @@
     }
 
     const currentIdx = provisionedForCurrentOrder.length + 1;
-    const totalReq = targetOrderTotalConns;
     const chosenSerial = selectedDeviceSerial;
-
-    const createdConn = provisionConnectionForOrder(
-      targetOrderForProvision.id,
-      chosenSerial,
+    const chosenEquipment = $equipments.find(
+      (equipment) => equipment.serialNumber === chosenSerial,
     );
+    if (!chosenEquipment) {
+      toast.error("Không tìm thấy thiết bị đã chọn trong dữ liệu API.");
+      return;
+    }
 
-    if (createdConn) {
+    if (pendingAction) return;
+    pendingAction = `provision:${targetOrderForProvision.id}`;
+    try {
+      const result = await provideConnection(targetOrderForProvision.id, {
+        equipmentId: chosenEquipment.id,
+        portNumber: `ETH-PORT-${currentIdx}`,
+        performedBy: technicalEmployeeId,
+      });
+      const workspace = await refreshTechnicalData();
+      const createdConn = workspace.connections.find(
+        (connection) => connection.accountId === result.accountId,
+      );
+
       toast.success(
         $language === "vi"
-          ? `Đã duyệt & cấp thành công Kết nối ${currentIdx}/${totalReq}! Account ID: ${createdConn.accountId} (Router: ${chosenSerial})`
-          : `Connection ${currentIdx}/${totalReq} provisioned! Account ID: ${createdConn.accountId} with device ${chosenSerial}`,
+          ? `Đã duyệt & cấp thành công Kết nối ${result.provisionedConnections}/${result.requiredConnections}! Account ID: ${result.accountId} (Router: ${chosenSerial})`
+          : `Connection ${result.provisionedConnections}/${result.requiredConnections} provisioned! Account ID: ${result.accountId} with device ${chosenSerial}`,
       );
       // Auto focus Connection Manager to this account
-      selectedConnection = createdConn;
-      techAccountSearch = createdConn.accountId;
-      expandedAccountId = createdConn.accountId;
+      selectedConnection = createdConn ?? null;
+      techAccountSearch = result.accountId;
+      expandedAccountId = result.accountId;
 
       // If more connections need provisioning for this order:
-      if (currentIdx < totalReq) {
-        const remainingStock = inStockEquipments.filter(
-          (eq) => eq.serialNumber !== chosenSerial,
+      if (result.provisionedConnections < result.requiredConnections) {
+        targetOrderForProvision =
+          workspace.orders.find((item) => item.id === result.orderId) ??
+          targetOrderForProvision;
+        const remainingStock = workspace.equipments.filter(
+          (equipment) => equipment.status === "In Stock" &&
+            equipment.serialNumber !== chosenSerial,
         );
-        selectedDeviceSerial = remainingStock.length > 0 ? remainingStock[0].serialNumber : "";
-        // Stay in modal so technical staff can immediately review and approve the next connection
+        selectedDeviceSerial = remainingStock.length > 0
+          ? remainingStock[0].serialNumber
+          : "";
         return;
       } else {
         toast.success(
           $language === "vi"
-            ? `Đơn hàng #${targetOrderForProvision.id} đã hoàn tất duyệt đủ ${totalReq}/${totalReq} kết nối!`
-            : `Order #${targetOrderForProvision.id} is now fully provisioned with ${totalReq}/${totalReq} connections!`,
+            ? `Đơn hàng #${result.orderId} đã hoàn tất đủ ${result.requiredConnections}/${result.requiredConnections} kết nối!`
+            : `Order #${result.orderId} is fully provisioned with ${result.requiredConnections}/${result.requiredConnections} connections!`,
         );
       }
-    }
 
-    isProvisionModalOpen = false;
-    targetOrderForProvision = null;
+      isProvisionModalOpen = false;
+      targetOrderForProvision = null;
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      pendingAction = "";
+    }
+  };
+
+  const toLocalDateTimeInput = (date: Date) => {
+    const offset = date.getTimezoneOffset() * 60_000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  };
+
+  const handleOpenScheduleModal = (order: Order) => {
+    targetOrderForSchedule = order;
+    scheduledInstallDate = order.scheduledInstallDate
+      ? toLocalDateTimeInput(new Date(order.scheduledInstallDate))
+      : toLocalDateTimeInput(new Date(Date.now() + 24 * 60 * 60 * 1000));
+    isScheduleModalOpen = true;
+  };
+
+  const handleSaveSchedule = async (e: SubmitEvent) => {
+    e.preventDefault();
+    if (!targetOrderForSchedule || !scheduledInstallDate || pendingAction) return;
+
+    pendingAction = `schedule:${targetOrderForSchedule.id}`;
+    try {
+      const result = await updateInstallationSchedule(targetOrderForSchedule.id, {
+        scheduledInstallDate,
+        technicianId: technicalEmployeeId,
+      });
+      await refreshTechnicalData();
+      toast.success(
+        $language === "vi"
+          ? `Đã lên lịch lắp đặt cho đơn ${result.orderId}.`
+          : `Installation scheduled for order ${result.orderId}.`,
+      );
+      isScheduleModalOpen = false;
+      targetOrderForSchedule = null;
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      pendingAction = "";
+    }
   };
 
   // ACTION HANDLER: CONNECTION STATUS 3-WAY TOGGLE
-  const handleToggleConnectionStatusFor = (conn: Connection, newStatus: ConnectionStatus) => {
+  const handleToggleConnectionStatusFor = async (conn: Connection, newStatus: ConnectionStatus) => {
     const reason =
       statusChangeReason.trim() ||
       ($language === "vi"
         ? `Kỹ thuật viên can thiệp thủ công chuyển trạng thái sang ${newStatus} qua Bảng điều khiển Kỹ thuật.`
         : `Manual technician override to ${newStatus} via Technical Command Console.`);
 
-    updateConnectionStatus(conn.accountId, newStatus, reason);
+    if (pendingAction) return;
+    pendingAction = `connection-status:${conn.accountId}`;
 
-    selectedConnection = {
-      ...conn,
-      status: newStatus,
-      lastStatusReason: reason,
-    };
+    try {
+      await changeConnectionStatus(conn.accountId, {
+        status: newStatus,
+        reason,
+        performedBy: technicalEmployeeId,
+      });
+      const workspace = await refreshTechnicalData();
+      await loadActivityLogs(conn.accountId);
+      selectedConnection =
+        workspace.connections.find(
+          (connection) => connection.accountId === conn.accountId,
+        ) ?? null;
 
-    const statusVi =
-      newStatus === "Active"
-        ? "Hoạt động bình thường"
-        : newStatus === "Temporarily Inactive"
-          ? "Tạm ngưng dịch vụ"
-          : "Ngắt kết nối vĩnh viễn";
+      const statusVi =
+        newStatus === "Active"
+          ? "Hoạt động bình thường"
+          : newStatus === "Temporarily Inactive"
+            ? "Tạm ngưng dịch vụ"
+            : "Ngắt kết nối vĩnh viễn";
 
-    toast.success(
-      $language === "vi"
-        ? `Đã cập nhật trạng thái tài khoản ${conn.accountId} thành: ${statusVi}`
-        : `Account ${conn.accountId} status updated to ${newStatus}`,
-    );
-    statusChangeReason = "";
+      toast.success(
+        $language === "vi"
+          ? `Đã cập nhật trạng thái tài khoản ${conn.accountId} thành: ${statusVi}`
+          : `Account ${conn.accountId} status updated to ${newStatus}`,
+      );
+      statusChangeReason = "";
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      pendingAction = "";
+    }
   };
 
   const handleToggleConnectionStatus = (newStatus: ConnectionStatus) => {
@@ -374,31 +594,56 @@
   };
 
   // ACTION HANDLER: REGISTER NEW EQUIPMENT
-  const handleSaveEquipment = (e: SubmitEvent) => {
+  const handleSaveEquipment = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!newEquipmentForm.serialNumber || !newEquipmentForm.macAddress) {
       toast.error("Serial number and MAC address are required.");
       return;
     }
 
-    addEquipment({ ...newEquipmentForm });
-
-    toast.success(
-      `Equipment ${newEquipmentForm.serialNumber} registered in stock.`,
+    const inventoryItem = $inventory.find(
+      (item) => item.id === newEquipmentForm.inventoryId,
     );
-    isAddEquipmentModalOpen = false;
-    newEquipmentForm = {
-      serialNumber: "",
-      macAddress: "",
-      deviceModel: "Nexus Wi-Fi 6 AX3000 Dual-Band Router",
-      deviceType: "Gigabit Router",
-      firmwareVersion: "v3.4.1-BUILD-88",
-      status: "In Stock",
-    };
+    if (!inventoryItem?.vendorId) {
+      toast.error("Vui lòng chọn mặt hàng kho có nhà cung cấp hợp lệ.");
+      return;
+    }
+    if (!newEquipmentForm.storeId) {
+      toast.error("Vui lòng chọn cửa hàng quản lý thiết bị.");
+      return;
+    }
+
+    if (pendingAction) return;
+    pendingAction = "create-equipment";
+    try {
+      await createEquipment({
+        equipmentId: `eq-${Date.now().toString().slice(-12)}`,
+        inventoryId: inventoryItem.id,
+        serialNumber: newEquipmentForm.serialNumber,
+        macAddress: newEquipmentForm.macAddress,
+        deviceModel: newEquipmentForm.deviceModel,
+        deviceType: newEquipmentForm.deviceType,
+        vendorId: inventoryItem.vendorId,
+        storeId: newEquipmentForm.storeId,
+        status: newEquipmentForm.status,
+        firmwareVersion: newEquipmentForm.firmwareVersion,
+      });
+      await refreshTechnicalData();
+      toast.success(
+        `Equipment ${newEquipmentForm.serialNumber} registered in stock.`,
+      );
+      isAddEquipmentModalOpen = false;
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      pendingAction = "";
+    }
   };
 
   const openAddEquipmentModal = () => {
     newEquipmentForm = {
+      inventoryId: $inventory.find((item) => item.vendorId)?.id ?? "",
+      storeId: availableStoreIds[0] ?? "",
       serialNumber: `NX-HW-${Math.floor(100000 + Math.random() * 900000)}`,
       macAddress: `${Math.floor(10 + Math.random() * 89)
         .toString(16)
@@ -413,6 +658,59 @@
       status: "In Stock",
     };
     isAddEquipmentModalOpen = true;
+  };
+
+  const handleEquipmentStatusChange = async (
+    equipment: Equipment,
+    status: Equipment["status"],
+  ) => {
+    if (equipment.status === status || pendingAction) return;
+    pendingAction = `equipment:${equipment.id}`;
+    try {
+      await updateEquipment(equipment.id, { status });
+      await refreshTechnicalData();
+      toast.success(
+        $language === "vi"
+          ? `Đã cập nhật trạng thái thiết bị ${equipment.serialNumber}.`
+          : `Equipment ${equipment.serialNumber} status updated.`,
+      );
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      pendingAction = "";
+    }
+  };
+
+  const openStockModal = (inventoryId: string, quantityChange: number) => {
+    targetInventoryId = inventoryId;
+    stockQuantityChange = quantityChange;
+    stockAdjustmentReason = quantityChange > 0
+      ? "Nhập thêm vật tư kỹ thuật"
+      : "Xuất vật tư kỹ thuật";
+    isStockModalOpen = true;
+  };
+
+  const handleAdjustStock = async (e: SubmitEvent) => {
+    e.preventDefault();
+    if (!targetInventoryId || stockQuantityChange === 0 || pendingAction) return;
+    pendingAction = `inventory:${targetInventoryId}`;
+    try {
+      const result = await adjustInventoryStock(targetInventoryId, {
+        quantityChange: stockQuantityChange,
+        reason: stockAdjustmentReason,
+      });
+      await refreshTechnicalData();
+      toast.success(
+        $language === "vi"
+          ? `Tồn kho mới: ${result.stockQuantity}.`
+          : `New stock quantity: ${result.stockQuantity}.`,
+      );
+      isStockModalOpen = false;
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      pendingAction = "";
+    }
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -438,6 +736,7 @@
     if (found) {
       selectedConnection = found;
       expandedAccountId = found.accountId;
+      loadActivityLogs(found.accountId);
       toast.success(
         $language === "vi"
           ? `Đã mở chi tiết đo kiểm mạch thuê bao #${found.accountId}`
@@ -502,6 +801,32 @@
       }
     : undefined}
 >
+  {#if isApiLoading || apiError}
+    <div
+      class="mb-4 flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm {apiError
+        ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300'
+        : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300'}"
+    >
+      <div class="flex items-center gap-2">
+        <RefreshCw class="h-4 w-4 {isApiLoading ? 'animate-spin' : ''}" />
+        <span>
+          {isApiLoading
+            ? ($language === "vi" ? "Đang đồng bộ dữ liệu kỹ thuật..." : "Syncing technical data...")
+            : apiError}
+        </span>
+      </div>
+      {#if apiError && !isApiLoading}
+        <button
+          type="button"
+          class="rounded-lg border border-current px-3 py-1 text-xs font-semibold hover:bg-white/50"
+          onclick={() => refreshTechnicalData().catch((error) => toast.error(errorMessage(error)))}
+        >
+          {$language === "vi" ? "Thử lại" : "Retry"}
+        </button>
+      {/if}
+    </div>
+  {/if}
+
   <!-- TAB 1: ORDER FEASIBILITY QUEUE -->
   {#if activeTab === "feasibility-queue"}
     <div class="tab-content-animate space-y-4">
@@ -744,13 +1069,19 @@
                         Account ID: {order.assignedAccountId}
                       </div>
                     {/if}
+                    {#if order.scheduledInstallDate && order.status === "Feasible"}
+                      <div class="text-[10px] font-mono text-blue-600 dark:text-blue-400 mt-1">
+                        <CalendarClock class="inline h-3 w-3 mr-0.5" />
+                        {new Date(order.scheduledInstallDate).toLocaleString($language === "vi" ? "vi-VN" : "en-US")}
+                      </div>
+                    {/if}
                   </td>
                   <td class="px-4 py-3 text-right">
                     <div
                       class="flex items-center justify-end gap-1.5 flex-wrap"
                     >
                       {#if order.status !== "Connection Provided"}
-                        {#if order.connectionType === "Dial-Up" && order.status !== "Feasible" && order.status !== "Not Feasible"}
+                        {#if order.connectionType === "Dial-Up" && order.status !== "Feasible"}
                           <button
                             onclick={() => toggleLeg(order, "landline")}
                             disabled={!!order.existingLandlineAccountId}
@@ -779,17 +1110,18 @@
                             NET {legFor(order).internet ? "✓" : "…"}
                           </button>
                         {/if}
-                        <button
-                          onclick={() => handleMarkFeasible(order)}
+                        {#if order.status !== "Feasible"}
+                          <button
+                            onclick={() => handleMarkFeasible(order)}
                           class="px-2 py-1 rounded text-xs font-semibold bg-emerald-50 dark:bg-emerald-600/20 hover:bg-emerald-100 dark:hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-600/30 transition"
                           title={$language === "vi"
                             ? "Xác nhận đạt tiêu chuẩn kỹ thuật"
                             : "Mark order as technically feasible"}
                         >
                           {$language === "vi" ? "Khả thi" : "Feasible"}
-                        </button>
-                        <button
-                          onclick={() => handleOpenNotFeasibleModal(order)}
+                          </button>
+                          <button
+                            onclick={() => handleOpenNotFeasibleModal(order)}
                           class="px-2 py-1 rounded text-xs font-semibold bg-rose-50 dark:bg-rose-600/20 hover:bg-rose-100 dark:hover:bg-rose-600/30 text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-600/30 transition"
                           title={$language === "vi"
                             ? "Báo cáo không khả thi hạ tầng"
@@ -798,9 +1130,17 @@
                           {$language === "vi"
                             ? "Không khả thi"
                             : "Not Feasible"}
-                        </button>
-                        <button
-                          onclick={() => handleOpenProvisionModal(order)}
+                          </button>
+                        {:else}
+                          <button
+                            onclick={() => handleOpenScheduleModal(order)}
+                            class="px-2 py-1 rounded text-xs font-semibold bg-blue-50 dark:bg-blue-600/20 hover:bg-blue-100 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700 transition inline-flex items-center gap-1"
+                          >
+                            <CalendarClock class="h-3.5 w-3.5" />
+                            <span>{$language === "vi" ? "Lịch lắp đặt" : "Schedule"}</span>
+                          </button>
+                          <button
+                            onclick={() => handleOpenProvisionModal(order)}
                           class="px-2.5 py-1 rounded text-xs font-bold transition shadow {provConns.length > 0 && provConns.length < totalReq
                             ? 'bg-amber-600 hover:bg-amber-700 text-white ring-2 ring-amber-400 animate-pulse'
                             : 'bg-amber-600 hover:bg-amber-700 text-white'}"
@@ -821,7 +1161,8 @@
                               ? "Cung cấp kết nối"
                               : "Connection Provided"}
                           {/if}
-                        </button>
+                          </button>
+                        {/if}
                       {:else}
                         <div class="text-right">
                           <span
@@ -1539,6 +1880,44 @@
                                 </div>
                               </div>
                             </div>
+
+                            <div class="mt-4 rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden">
+                              <div class="px-3 py-2 bg-slate-50 dark:bg-slate-950 flex items-center justify-between">
+                                <span class="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                                  <History class="h-3.5 w-3.5 text-amber-500" />
+                                  {$language === "vi" ? "Nhật ký thao tác kết nối" : "Connection activity log"}
+                                </span>
+                                <button
+                                  onclick={() => loadActivityLogs(conn.accountId)}
+                                  disabled={activityLogsLoading === conn.accountId}
+                                  class="text-[11px] text-amber-600 hover:text-amber-700 disabled:opacity-50"
+                                >
+                                  {$language === "vi" ? "Tải lại" : "Reload"}
+                                </button>
+                              </div>
+                              {#if activityLogsLoading === conn.accountId && !activityLogs[conn.accountId]}
+                                <div class="p-3 text-xs text-slate-500">{$language === "vi" ? "Đang tải nhật ký..." : "Loading logs..."}</div>
+                              {:else if (activityLogs[conn.accountId] ?? []).length === 0}
+                                <div class="p-3 text-xs text-slate-500">{$language === "vi" ? "Chưa có thao tác nào." : "No activity recorded."}</div>
+                              {:else}
+                                <div class="divide-y divide-slate-100 dark:divide-slate-800 max-h-44 overflow-y-auto">
+                                  {#each activityLogs[conn.accountId] ?? [] as log (log.logId)}
+                                    <div class="px-3 py-2 text-xs flex items-start justify-between gap-4">
+                                      <div>
+                                        <div class="font-semibold text-slate-800 dark:text-slate-200">
+                                          {log.actionType}: {log.oldValue ?? "—"} → {log.newValue ?? "—"}
+                                        </div>
+                                        <div class="text-slate-500 dark:text-slate-400 mt-0.5">{log.reason ?? "—"}</div>
+                                      </div>
+                                      <div class="text-right shrink-0 text-[10px] text-slate-500 font-mono">
+                                        <div>{new Date(log.timestamp).toLocaleString($language === "vi" ? "vi-VN" : "en-US")}</div>
+                                        <div>{log.performedByName ?? log.performedBy ?? "System"}</div>
+                                      </div>
+                                    </div>
+                                  {/each}
+                                </div>
+                              {/if}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -1710,12 +2089,141 @@
                             : "Bảo hành RMA"
                         : eq.status}
                     </span>
+                    {#if eq.status !== "In Service"}
+                      <select
+                        value={eq.status}
+                        onchange={(event) => handleEquipmentStatusChange(
+                          eq,
+                          event.currentTarget.value as Equipment["status"],
+                        )}
+                        disabled={pendingAction === `equipment:${eq.id}`}
+                        class="block mt-1.5 w-full min-w-28 px-2 py-1 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-[11px] text-slate-700 dark:text-slate-300"
+                      >
+                        <option value="In Stock">In Stock</option>
+                        <option value="Maintenance">Maintenance</option>
+                        <option value="Faulty">Faulty</option>
+                      </select>
+                    {/if}
                   </td>
                 </tr>
               {/each}
             </tbody>
           </table>
         </div>
+      </div>
+
+      <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+        <div class="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex items-center gap-2">
+          <PackageOpen class="h-4 w-4 text-amber-500" />
+          <h3 class="text-sm font-bold text-slate-900 dark:text-white">
+            {$language === "vi" ? "Tồn kho vật tư kỹ thuật" : "Technical inventory"}
+          </h3>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-slate-50 dark:bg-slate-950 text-slate-500 uppercase font-mono">
+              <tr>
+                <th class="px-4 py-2.5">{$language === "vi" ? "Mã vật tư" : "Item"}</th>
+                <th class="px-4 py-2.5">{$language === "vi" ? "Tên" : "Name"}</th>
+                <th class="px-4 py-2.5">{$language === "vi" ? "Vị trí" : "Location"}</th>
+                <th class="px-4 py-2.5 text-right">{$language === "vi" ? "Tồn / Đặt lại" : "Stock / Reorder"}</th>
+                <th class="px-4 py-2.5 text-right">{$language === "vi" ? "Điều chỉnh" : "Adjust"}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
+              {#each $inventory as item (item.id)}
+                <tr class:item-low-stock={item.stockQuantity <= item.reorderLevel}>
+                  <td class="px-4 py-3 font-mono font-semibold text-amber-600">{item.itemCode}</td>
+                  <td class="px-4 py-3">
+                    <div class="font-medium text-slate-900 dark:text-white">{item.name}</div>
+                    <div class="text-[10px] text-slate-500">{item.supplier || "—"}</div>
+                  </td>
+                  <td class="px-4 py-3 text-slate-600 dark:text-slate-400">{item.location || "—"}</td>
+                  <td class="px-4 py-3 text-right font-mono">
+                    <span class:item-low-stock={item.stockQuantity <= item.reorderLevel} class="font-bold">{item.stockQuantity}</span>
+                    <span class="text-slate-400"> / {item.reorderLevel}</span>
+                  </td>
+                  <td class="px-4 py-3 text-right space-x-1">
+                    <button onclick={() => openStockModal(item.id, -1)} class="px-2 py-1 rounded border border-rose-200 text-rose-600 hover:bg-rose-50">− Xuất</button>
+                    <button onclick={() => openStockModal(item.id, 1)} class="px-2 py-1 rounded border border-emerald-200 text-emerald-600 hover:bg-emerald-50">+ Nhập</button>
+                  </td>
+                </tr>
+              {/each}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- INSTALLATION SCHEDULE MODAL -->
+  {#if isScheduleModalOpen && targetOrderForSchedule}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
+      <div class="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl">
+        <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+          <h3 class="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <CalendarClock class="h-5 w-5 text-blue-500" />
+            {$language === "vi" ? "Lên lịch lắp đặt" : "Schedule installation"}
+          </h3>
+          <button onclick={() => (isScheduleModalOpen = false)} class="text-slate-400 hover:text-slate-700"><X class="h-5 w-5" /></button>
+        </div>
+        <form onsubmit={handleSaveSchedule} class="space-y-4">
+          <div class="text-xs text-slate-600 dark:text-slate-400">
+            <div><strong>#{targetOrderForSchedule.id}</strong> — {targetOrderForSchedule.customerName}</div>
+            <div class="mt-1">{targetOrderForSchedule.installationAddress}</div>
+          </div>
+          <div>
+            <label for="scheduled-install-date" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              {$language === "vi" ? "Ngày giờ lắp đặt" : "Installation date and time"}
+            </label>
+            <input
+              id="scheduled-install-date"
+              type="datetime-local"
+              required
+              min={toLocalDateTimeInput(new Date())}
+              bind:value={scheduledInstallDate}
+              class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm"
+            />
+          </div>
+          <div class="text-xs text-slate-500">
+            {$language === "vi" ? `Kỹ thuật viên: ${technicalEmployeeId}` : `Technician: ${technicalEmployeeId}`}
+          </div>
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick={() => (isScheduleModalOpen = false)} class="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">{$language === "vi" ? "Hủy" : "Cancel"}</button>
+            <button type="submit" disabled={pendingAction.startsWith("schedule:")} class="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold disabled:opacity-50">{$language === "vi" ? "Lưu lịch" : "Save schedule"}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  {/if}
+
+  <!-- INVENTORY ADJUSTMENT MODAL -->
+  {#if isStockModalOpen}
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 backdrop-blur-sm p-4">
+      <div class="w-full max-w-md rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-6 shadow-2xl">
+        <div class="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+          <h3 class="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <PackageOpen class="h-5 w-5 text-amber-500" />
+            {$language === "vi" ? "Điều chỉnh tồn kho" : "Adjust inventory"}
+          </h3>
+          <button onclick={() => (isStockModalOpen = false)} class="text-slate-400 hover:text-slate-700"><X class="h-5 w-5" /></button>
+        </div>
+        <form onsubmit={handleAdjustStock} class="space-y-4">
+          <div>
+            <label for="stock-change" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              {$language === "vi" ? "Số lượng thay đổi (âm là xuất kho)" : "Quantity change (negative removes stock)"}
+            </label>
+            <input id="stock-change" type="number" required min="-1000000" max="1000000" bind:value={stockQuantityChange} class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm" />
+          </div>
+          <div>
+            <label for="stock-reason" class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">{$language === "vi" ? "Lý do" : "Reason"}</label>
+            <textarea id="stock-reason" required maxlength="500" rows="3" bind:value={stockAdjustmentReason} class="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950 text-sm"></textarea>
+          </div>
+          <div class="flex justify-end gap-2 pt-2">
+            <button type="button" onclick={() => (isStockModalOpen = false)} class="px-4 py-2 rounded-lg border border-slate-200 dark:border-slate-700 text-xs">{$language === "vi" ? "Hủy" : "Cancel"}</button>
+            <button type="submit" disabled={stockQuantityChange === 0 || pendingAction.startsWith("inventory:")} class="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold disabled:opacity-50">{$language === "vi" ? "Xác nhận" : "Confirm"}</button>
+          </div>
+        </form>
       </div>
     </div>
   {/if}
@@ -1868,12 +2376,12 @@
                       ? `Assign Router / Modem for Circuit #${currentProvisioningIndex} *`
                       : "Assign Modem / Router from Stock *")}
               </label>
-              {#if inStockEquipments.length > 0}
+              {#if provisioningEquipments.length > 0}
                 <select
                   bind:value={selectedDeviceSerial}
                   class="w-full px-3 py-2 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-mono text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-amber-500"
                 >
-                  {#each inStockEquipments as eq (eq.id)}
+                  {#each provisioningEquipments as eq (eq.id)}
                     <option value={eq.serialNumber}
                       >{eq.serialNumber} — {eq.deviceModel} ({eq.macAddress})</option
                     >
@@ -1881,8 +2389,8 @@
                 </select>
                 <div class="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
                   {$language === "vi"
-                    ? `Hiện có ${inStockEquipments.length} thiết bị sẵn sàng trong kho.`
-                    : `${inStockEquipments.length} hardware units available in stock.`}
+                    ? `Hiện có ${provisioningEquipments.length} thiết bị sẵn sàng tại cửa hàng này.`
+                    : `${provisioningEquipments.length} hardware units available at this store.`}
                 </div>
               {:else}
                 <div
@@ -2031,6 +2539,43 @@
           onsubmit={handleSaveEquipment}
           class="space-y-3 text-xs font-mono"
         >
+          <div class="grid grid-cols-2 gap-2 font-sans">
+            <div>
+              <label class="block text-slate-600 dark:text-slate-400 mb-1">
+                {$language === "vi" ? "Mặt hàng kho *" : "Inventory item *"}
+              </label>
+              <select
+                required
+                bind:value={newEquipmentForm.inventoryId}
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+              >
+                <option value="" disabled>
+                  {$language === "vi" ? "Chọn mặt hàng" : "Select item"}
+                </option>
+                {#each $inventory.filter((item) => item.vendorId) as item (item.id)}
+                  <option value={item.id}>{item.itemCode} — {item.name}</option>
+                {/each}
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-600 dark:text-slate-400 mb-1">
+                {$language === "vi" ? "Cửa hàng quản lý *" : "Assigned store *"}
+              </label>
+              <select
+                required
+                bind:value={newEquipmentForm.storeId}
+                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-slate-900 dark:text-slate-100"
+              >
+                <option value="" disabled>
+                  {$language === "vi" ? "Chọn cửa hàng" : "Select store"}
+                </option>
+                {#each availableStoreIds as storeId (storeId)}
+                  <option value={storeId}>{storeId}</option>
+                {/each}
+              </select>
+            </div>
+          </div>
+
           <div>
             <label class="block text-slate-600 dark:text-slate-400 mb-1">
               {$language === "vi" ? "Số Serial phần cứng *" : "Serial Number *"}
@@ -2112,9 +2657,12 @@
             </button>
             <button
               type="submit"
+              disabled={pendingAction === "create-equipment"}
               class="px-4 py-2 rounded-lg text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition shadow"
             >
-              {$language === "vi" ? "Xác nhận & Lưu kho" : "Confirm & Save"}
+              {pendingAction === "create-equipment"
+                ? ($language === "vi" ? "Đang lưu..." : "Saving...")
+                : ($language === "vi" ? "Xác nhận & Lưu kho" : "Confirm & Save")}
             </button>
           </div>
         </form>

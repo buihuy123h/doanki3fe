@@ -111,6 +111,8 @@ export interface InventoryItem {
   unitCost: number;
   location: string;
   supplier: string;
+  vendorId?: string;
+  status?: string;
 }
 
 // 6. Orders (Retail & Technical Feasibility)
@@ -134,6 +136,9 @@ export interface Order {
   dpBoxCapacity?: string;
   signalLossDbm?: number;
   assignedAccountId?: string; // 16-char Account ID issued once the line is Feasible
+  scheduledInstallDate?: string;
+  feasibilityCheckedBy?: string;
+  feasibilityCheckedDate?: string;
 
   // Bulk / corporate scheme
   bulkConnectionsCount: number; // connections covered by this order (>= 1)
@@ -164,6 +169,9 @@ export interface Connection {
   assignedDeviceSerial?: string;
   assignedDeviceModel?: string;
   installedDate: string;
+  suspensionStartDate?: string;
+  suspensionEndDate?: string;
+  terminatedDate?: string;
   lastUpdated: string;
   lastStatusReason?: string;
 }
@@ -171,6 +179,9 @@ export interface Connection {
 // 8. Equipment / Product Details (Technical Staff)
 export interface Equipment {
   id: string;
+  inventoryId?: string;
+  vendorId?: string;
+  storeId?: string;
   serialNumber: string; // e.g., "NX-HW-992810"
   macAddress: string; // e.g., "BC:A9:93:21:44:8E"
   deviceModel: string; // e.g., "Nexus GigaFiber Dual-Band WiFi-6 ONT"

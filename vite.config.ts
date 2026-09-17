@@ -40,6 +40,12 @@ export default defineConfig({
   ],
   server: {
     port: 3000,
+    proxy: {
+      '/api/Technical': {
+        target: 'http://localhost:5105',
+        changeOrigin: true,
+      },
+    },
   },
   resolve: {
     alias: {
