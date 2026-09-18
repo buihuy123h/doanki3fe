@@ -20,11 +20,11 @@ import {
   type RoleType,
 } from '../types/nexus';
 import {
-  planService,
-  employeeService,
-  retailShopService,
-  vendorService,
-  inventoryService,
+  planApi,
+  employeeApi,
+  retailShopApi,
+  vendorApi,
+  inventoryApi,
 } from '../api';
 
 export { getBulkDiscountPercent };
@@ -96,10 +96,12 @@ function createNexusStore() {
   // Version tag: bumped to clear any obsolete mock data stored in localStorage
   const V = '_v4_clean';
   if (typeof window !== 'undefined') {
-    // Clear obsolete mock caches
+    // Clear obsolete mock caches and uncouple admin entities from localStorage
     ['nexus_plans_v3', 'nexus_employees_v3', 'nexus_vendors_v3', 'nexus_retailShops_v3', 
      'nexus_inventory_v3', 'nexus_orders_v3', 'nexus_connections_v3', 'nexus_equipments_v3', 
-     'nexus_bills_v3', 'nexus_feedbacks_v3'].forEach(k => localStorage.removeItem(k));
+     'nexus_bills_v3', 'nexus_feedbacks_v3',
+     'nexus_plans' + V, 'nexus_employees' + V, 'nexus_vendors' + V, 'nexus_retailShops' + V, 'nexus_inventory' + V
+    ].forEach(k => localStorage.removeItem(k));
   }
 
   const currentRole = writable<RoleType>('admin');
@@ -114,12 +116,12 @@ function createNexusStore() {
   } | null>(null);
   const isSyncing = writable<boolean>(false);
 
-  // Clean empty state ready for real API data
-  const plans = writable<Plan[]>(loadFromStorage('nexus_plans' + V, []));
-  const employees = writable<Employee[]>(loadFromStorage('nexus_employees' + V, []));
-  const vendors = writable<Vendor[]>(loadFromStorage('nexus_vendors' + V, []));
-  const retailShops = writable<RetailShop[]>(loadFromStorage('nexus_retailShops' + V, []));
-  const inventory = writable<InventoryItem[]>(loadFromStorage('nexus_inventory' + V, []));
+  // Clean empty state ready for real API data (Admin entities directly backed by Backend/DB)
+  const plans = writable<Plan[]>([]);
+  const employees = writable<Employee[]>([]);
+  const vendors = writable<Vendor[]>([]);
+  const retailShops = writable<RetailShop[]>([]);
+  const inventory = writable<InventoryItem[]>([]);
   const orders = writable<Order[]>(loadFromStorage('nexus_orders' + V, []));
   const connections = writable<Connection[]>(loadFromStorage('nexus_connections' + V, []));
   const equipments = writable<Equipment[]>(loadFromStorage('nexus_equipments' + V, []));
@@ -127,12 +129,7 @@ function createNexusStore() {
   const feedbacks = writable<Feedback[]>(loadFromStorage('nexus_feedbacks' + V, []));
   const settings = writable<SystemSettings>(loadFromStorage('nexus_settings' + V, INITIAL_SETTINGS));
 
-  // Auto-persist to localStorage on every change
-  plans.subscribe(persist('nexus_plans' + V));
-  employees.subscribe(persist('nexus_employees' + V));
-  vendors.subscribe(persist('nexus_vendors' + V));
-  retailShops.subscribe(persist('nexus_retailShops' + V));
-  inventory.subscribe(persist('nexus_inventory' + V));
+  // Auto-persist to localStorage only for client/operational stores
   orders.subscribe(persist('nexus_orders' + V));
   connections.subscribe(persist('nexus_connections' + V));
   equipments.subscribe(persist('nexus_equipments' + V));
@@ -140,66 +137,211 @@ function createNexusStore() {
   feedbacks.subscribe(persist('nexus_feedbacks' + V));
   settings.subscribe(persist('nexus_settings' + V));
 
-  // ---- Plan Handlers ----
-  const addPlan = (plan: Omit<Plan, 'id'>) => {
-    plans.update((prev) => [{ ...plan, id: `plan-${Date.now()}` }, ...prev]);
+  // ---- Plan Handlers (Connected to Backend API) ----
+  const addPlan = async (planData: Omit<Plan, 'id'>) => {
+    try {
+      const created = await planApi.create(planData);
+      if (created && created.id) {
+        plans.update((prev) => [created, ...prev.filter((p) => p.id !== created.id)]);
+        return created;
+      }
+    } catch (err: any) {
+      console.error('[Nexus] Error creating plan via API:', err);
+      const fallback: Plan = { ...planData, id: `plan-${Date.now()}` };
+      plans.update((prev) => [fallback, ...prev]);
+      throw err;
+    }
   };
-  const updatePlan = (id: string, updated: Partial<Plan>) => {
-    plans.update((prev) => prev.map((p) => (p.id === id ? { ...p, ...updated } : p)));
+  const updatePlan = async (id: string, updated: Partial<Plan>) => {
+    try {
+      const result = await planApi.update(id, updated);
+      if (result) {
+        plans.update((prev) => prev.map((p) => (p.id === id ? { ...p, ...result } : p)));
+        return result;
+      }
+    } catch (err: any) {
+      console.error('[Nexus] Error updating plan via API:', err);
+      plans.update((prev) => prev.map((p) => (p.id === id ? { ...p, ...updated } : p)));
+      throw err;
+    }
   };
-  const deletePlan = (id: string) => {
-    plans.update((prev) => prev.filter((p) => p.id !== id));
-  };
-
-  // ---- Employee Handlers ----
-  const addEmployee = (emp: Omit<Employee, 'id'>) => {
-    employees.update((prev) => [{ ...emp, id: `emp-${Date.now()}` }, ...prev]);
-  };
-  const updateEmployee = (id: string, updated: Partial<Employee>) => {
-    employees.update((prev) => prev.map((e) => (e.id === id ? { ...e, ...updated } : e)));
-  };
-  const deleteEmployee = (id: string) => {
-    employees.update((prev) => prev.filter((e) => e.id !== id));
-  };
-
-  // ---- Vendor Handlers ----
-  const addVendor = (vendor: Omit<Vendor, 'id'>) => {
-    vendors.update((prev) => [{ ...vendor, id: `vnd-${Date.now()}` }, ...prev]);
-  };
-  const updateVendor = (id: string, updated: Partial<Vendor>) => {
-    vendors.update((prev) => prev.map((v) => (v.id === id ? { ...v, ...updated } : v)));
-  };
-  const deleteVendor = (id: string) => {
-    vendors.update((prev) => prev.filter((v) => v.id !== id));
-  };
-
-  // ---- Retail Shop Handlers ----
-  const addRetailShop = (shop: Omit<RetailShop, 'id'>) => {
-    retailShops.update((prev) => [{ ...shop, id: `sh-${Date.now()}` }, ...prev]);
-  };
-  const updateRetailShop = (id: string, updated: Partial<RetailShop>) => {
-    retailShops.update((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
-  };
-  const deleteRetailShop = (id: string) => {
-    retailShops.update((prev) => prev.filter((s) => s.id !== id));
+  const deletePlan = async (id: string) => {
+    try {
+      await planApi.delete(id);
+      plans.update((prev) => prev.filter((p) => p.id !== id));
+    } catch (err: any) {
+      console.error('[Nexus] Error deleting plan via API:', err);
+      plans.update((prev) => prev.filter((p) => p.id !== id));
+      throw err;
+    }
   };
 
-  // ---- Inventory Handlers ----
-  const updateInventoryStock = (id: string, delta: number) => {
+  // ---- Employee Handlers (Connected to Backend API) ----
+  const addEmployee = async (empData: Omit<Employee, 'id'>) => {
+    try {
+      const created = await employeeApi.create(empData);
+      if (created && created.id) {
+        employees.update((prev) => [created, ...prev.filter((e) => e.id !== created.id)]);
+        return created;
+      }
+    } catch (err: any) {
+      console.error('[Nexus] Error creating employee via API:', err);
+      const fallback: Employee = { ...empData, id: `emp-${Date.now()}` };
+      employees.update((prev) => [fallback, ...prev]);
+      throw err;
+    }
+  };
+  const updateEmployee = async (id: string, updated: Partial<Employee>) => {
+    try {
+      const result = await employeeApi.update(id, updated);
+      if (result) {
+        employees.update((prev) => prev.map((e) => (e.id === id ? { ...e, ...result } : e)));
+        return result;
+      }
+    } catch (err: any) {
+      console.error('[Nexus] Error updating employee via API:', err);
+      employees.update((prev) => prev.map((e) => (e.id === id ? { ...e, ...updated } : e)));
+      throw err;
+    }
+  };
+  const deleteEmployee = async (id: string) => {
+    try {
+      await employeeApi.delete(id);
+      employees.update((prev) => prev.filter((e) => e.id !== id));
+    } catch (err: any) {
+      console.error('[Nexus] Error deleting employee via API:', err);
+      employees.update((prev) => prev.filter((e) => e.id !== id));
+      throw err;
+    }
+  };
+
+  // ---- Vendor Handlers (Connected to Backend API) ----
+  const addVendor = async (vendorData: Omit<Vendor, 'id'>) => {
+    try {
+      const created = await vendorApi.create(vendorData);
+      if (created && created.id) {
+        vendors.update((prev) => [created, ...prev.filter((v) => v.id !== created.id)]);
+        return created;
+      }
+    } catch (err: any) {
+      console.error('[Nexus] Error creating vendor via API:', err);
+      const fallback: Vendor = { ...vendorData, id: `vnd-${Date.now()}` };
+      vendors.update((prev) => [fallback, ...prev]);
+      throw err;
+    }
+  };
+  const updateVendor = async (id: string, updated: Partial<Vendor>) => {
+    try {
+      const result = await vendorApi.update(id, updated);
+      if (result) {
+        vendors.update((prev) => prev.map((v) => (v.id === id ? { ...v, ...result } : v)));
+        return result;
+      }
+    } catch (err: any) {
+      console.error('[Nexus] Error updating vendor via API:', err);
+      vendors.update((prev) => prev.map((v) => (v.id === id ? { ...v, ...updated } : v)));
+      throw err;
+    }
+  };
+  const deleteVendor = async (id: string) => {
+    try {
+      await vendorApi.delete(id);
+      vendors.update((prev) => prev.filter((v) => v.id !== id));
+    } catch (err: any) {
+      console.error('[Nexus] Error deleting vendor via API:', err);
+      vendors.update((prev) => prev.filter((v) => v.id !== id));
+      throw err;
+    }
+  };
+
+  // ---- Retail Shop Handlers (Connected to Backend API) ----
+  const addRetailShop = async (shopData: Omit<RetailShop, 'id'>) => {
+    try {
+      const created = await retailShopApi.create(shopData);
+      if (created && created.id) {
+        retailShops.update((prev) => [created, ...prev.filter((s) => s.id !== created.id)]);
+        return created;
+      }
+    } catch (err: any) {
+      console.error('[Nexus] Error creating retail shop via API:', err);
+      const fallback: RetailShop = { ...shopData, id: `sh-${Date.now()}` };
+      retailShops.update((prev) => [fallback, ...prev]);
+      throw err;
+    }
+  };
+  const updateRetailShop = async (id: string, updated: Partial<RetailShop>) => {
+    try {
+      const result = await retailShopApi.update(id, updated);
+      if (result) {
+        retailShops.update((prev) => prev.map((s) => (s.id === id ? { ...s, ...result } : s)));
+        return result;
+      }
+    } catch (err: any) {
+      console.error('[Nexus] Error updating retail shop via API:', err);
+      retailShops.update((prev) => prev.map((s) => (s.id === id ? { ...s, ...updated } : s)));
+      throw err;
+    }
+  };
+  const deleteRetailShop = async (id: string) => {
+    try {
+      await retailShopApi.delete(id);
+      retailShops.update((prev) => prev.filter((s) => s.id !== id));
+    } catch (err: any) {
+      console.error('[Nexus] Error deleting retail shop via API:', err);
+      retailShops.update((prev) => prev.filter((s) => s.id !== id));
+      throw err;
+    }
+  };
+
+  // ---- Inventory Handlers (Connected to Backend API) ----
+  const updateInventoryStock = async (id: string, delta: number) => {
+    const current = get(inventory).find((item) => item.id === id);
+    const newQty = Math.max(0, (current?.stockQuantity ?? 0) + delta);
+    try {
+      await inventoryApi.updateStock(id, newQty);
+    } catch (err: any) {
+      console.error('[Nexus] Error updating stock via API:', err);
+    }
     inventory.update((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, stockQuantity: Math.max(0, item.stockQuantity + delta) } : item
-      )
+      prev.map((item) => (item.id === id ? { ...item, stockQuantity: newQty } : item))
     );
   };
-  const addInventoryItem = (item: Omit<InventoryItem, 'id'>) => {
-    inventory.update((prev) => [{ ...item, id: `inv-${Date.now()}` }, ...prev]);
+  const addInventoryItem = async (itemData: Omit<InventoryItem, 'id'>) => {
+    try {
+      const created = await inventoryApi.create(itemData);
+      if (created && created.id) {
+        inventory.update((prev) => [created, ...prev.filter((i) => i.id !== created.id)]);
+        return created;
+      }
+    } catch (err: any) {
+      console.error('[Nexus] Error creating inventory item via API:', err);
+      const fallback: InventoryItem = { ...itemData, id: `inv-${Date.now()}` };
+      inventory.update((prev) => [fallback, ...prev]);
+      throw err;
+    }
   };
-  const updateInventoryItem = (id: string, updated: Partial<InventoryItem>) => {
-    inventory.update((prev) => prev.map((item) => (item.id === id ? { ...item, ...updated } : item)));
+  const updateInventoryItem = async (id: string, updated: Partial<InventoryItem>) => {
+    try {
+      const result = await inventoryApi.update(id, updated);
+      if (result) {
+        inventory.update((prev) => prev.map((item) => (item.id === id ? { ...item, ...result } : item)));
+        return result;
+      }
+    } catch (err: any) {
+      console.error('[Nexus] Error updating inventory item via API:', err);
+      inventory.update((prev) => prev.map((item) => (item.id === id ? { ...item, ...updated } : item)));
+      throw err;
+    }
   };
-  const deleteInventoryItem = (id: string) => {
-    inventory.update((prev) => prev.filter((item) => item.id !== id));
+  const deleteInventoryItem = async (id: string) => {
+    try {
+      await inventoryApi.delete(id);
+      inventory.update((prev) => prev.filter((item) => item.id !== id));
+    } catch (err: any) {
+      console.error('[Nexus] Error deleting inventory item via API:', err);
+      inventory.update((prev) => prev.filter((item) => item.id !== id));
+      throw err;
+    }
   };
 
   // ---- Order Handlers ----
@@ -597,11 +739,11 @@ function createNexusStore() {
       // 1. Thá»­ gá»i trá»±c tiáº¿p cÃ¡c REST API cá»§a ASP.NET Core
       try {
         const [apiPlans, apiEmployees, apiShops, apiVendors, apiInventory] = await Promise.allSettled([
-          planService.getPlans(),
-          employeeService.getEmployees(),
-          retailShopService.getRetailShops(),
-          vendorService.getVendors(),
-          inventoryService.getInventory(),
+          planApi.getAll(),
+          employeeApi.getAll(),
+          retailShopApi.getAll(),
+          vendorApi.getAll(),
+          inventoryApi.getAll(),
         ]);
 
         let hasApiData = false;

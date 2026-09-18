@@ -39,4 +39,12 @@ export const retailShopApi = {
   delete: (id) => {
     return apiClient.delete(`/api/admin/retailshop/${id}`);
   },
+
+  // Alias tương thích ngược
+  getRetailShops: (params) => apiClient.get('/api/admin/retailshop', params),
+  getRetailShopById: (id) => apiClient.get(`/api/admin/retailshop/${id}`),
+  getRetailShopStats: () => apiClient.get('/api/admin/retailshop/stats'),
+  createRetailShop: (data) => apiClient.post('/api/admin/retailshop', data),
+  updateRetailShop: (id, data) => apiClient.put(`/api/admin/retailshop/${id}`, data),
+  deleteRetailShop: (id) => apiClient.delete(`/api/admin/retailshop/${id}`),
 };

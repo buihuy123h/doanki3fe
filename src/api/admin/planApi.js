@@ -54,4 +54,15 @@ export const planApi = {
   delete: (id) => {
     return apiClient.delete(`/api/admin/plan/${id}`);
   },
+
+  // Alias tương thích ngược
+  getPlans: (params) => apiClient.get('/api/admin/plan', params),
+  getPlanById: (id) => apiClient.get(`/api/admin/plan/${id}`),
+  getLandlinePlans: (search) => apiClient.get('/api/admin/plan/landline', { search }),
+  getBroadbandPlans: (search) => apiClient.get('/api/admin/plan/broadband', { search }),
+  getDialUpPlans: (search) => apiClient.get('/api/admin/plan/dial-up', { search }),
+  getPlanStats: () => apiClient.get('/api/admin/plan/stats'),
+  createPlan: (data) => apiClient.post('/api/admin/plan', data),
+  updatePlan: (id, data) => apiClient.put(`/api/admin/plan/${id}`, data),
+  deletePlan: (id) => apiClient.delete(`/api/admin/plan/${id}`),
 };

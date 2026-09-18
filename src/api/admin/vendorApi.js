@@ -39,4 +39,12 @@ export const vendorApi = {
   delete: (id) => {
     return apiClient.delete(`/api/admin/vendor/${id}`);
   },
+
+  // Alias tương thích ngược
+  getVendors: (params) => apiClient.get('/api/admin/vendor', params),
+  getVendorById: (id) => apiClient.get(`/api/admin/vendor/${id}`),
+  getVendorStats: () => apiClient.get('/api/admin/vendor/stats'),
+  createVendor: (data) => apiClient.post('/api/admin/vendor', data),
+  updateVendor: (id, data) => apiClient.put(`/api/admin/vendor/${id}`, data),
+  deleteVendor: (id) => apiClient.delete(`/api/admin/vendor/${id}`),
 };

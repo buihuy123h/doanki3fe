@@ -54,4 +54,14 @@ export const inventoryApi = {
   delete: (id) => {
     return apiClient.delete(`/api/admin/inventory/${id}`);
   },
+
+  // Alias tương thích ngược
+  getInventory: (params) => apiClient.get('/api/admin/inventory', params),
+  getLowStockItems: () => apiClient.get('/api/admin/inventory/low-stock'),
+  getInventoryItemById: (id) => apiClient.get(`/api/admin/inventory/${id}`),
+  getInventoryStats: () => apiClient.get('/api/admin/inventory/stats'),
+  createInventoryItem: (data) => apiClient.post('/api/admin/inventory', data),
+  updateInventoryItem: (id, data) => apiClient.put(`/api/admin/inventory/${id}`, data),
+  updateStockQuantity: (id, quantity) => apiClient.patch(`/api/admin/inventory/${id}/stock`, { quantity }),
+  deleteInventoryItem: (id) => apiClient.delete(`/api/admin/inventory/${id}`),
 };

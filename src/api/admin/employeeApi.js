@@ -17,7 +17,7 @@ export const employeeApi = {
 
   // 2. Tìm kiếm nhân viên
   search: (keyword) => {
-    return apiClient.get('/api/admin/employee/search', { search: keyword });
+    return apiClient.get('/api/admin/employee/search', { keyword, search: keyword });
   },
 
   // 3. Lọc nhân viên theo phòng ban, vai trò, trạng thái
@@ -44,4 +44,11 @@ export const employeeApi = {
   delete: (id) => {
     return apiClient.delete(`/api/admin/employee/${id}`);
   },
+
+  // Alias tương thích ngược
+  getEmployees: (params) => apiClient.get('/api/admin/employee', params),
+  getEmployeeById: (id) => apiClient.get(`/api/admin/employee/${id}`),
+  createEmployee: (data) => apiClient.post('/api/admin/employee', data),
+  updateEmployee: (id, data) => apiClient.put(`/api/admin/employee/${id}`, data),
+  deleteEmployee: (id) => apiClient.delete(`/api/admin/employee/${id}`),
 };

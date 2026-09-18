@@ -23,7 +23,7 @@
     vendors, addVendor, updateVendor, deleteVendor,
     retailShops, addRetailShop, updateRetailShop, deleteRetailShop,
     plans, addPlan, updatePlan, deletePlan,
-    inventory, addInventoryItem, updateInventoryItem, deleteInventoryItem,
+    inventory, addInventoryItem, updateInventoryItem, deleteInventoryItem, updateInventoryStock,
     feedbacks, respondFeedback,
   } = nexusStore;
   const { t, language } = languageStore;
@@ -47,9 +47,36 @@
     }
   });
 
-  // Employee Search and Filter
+  // Submitting state for all modals (prevents double clicking)
+  let isSubmitting = $state(false);
+
+  // Search and Filter States
   let employeeSearch = $state('');
   let employeeRoleFilter = $state('All');
+
+  let planSearch = $state('');
+  let planTypeFilter = $state('All');
+  let planStatusFilter = $state('All');
+
+  let stockSearch = $state('');
+  let stockCategoryFilter = $state('All');
+
+  let vendorSearch = $state('');
+  let vendorCategoryFilter = $state('All');
+
+  let shopSearch = $state('');
+
+  const handleQuickStockAdjust = async (id: string, delta: number) => {
+    try {
+      await updateInventoryStock(id, delta);
+      toast.success(delta > 0 
+        ? ($language === 'vi' ? 'Đã nhập thêm 1 đơn vị vào kho' : 'Stock unit added (+1)') 
+        : ($language === 'vi' ? 'Đã xuất 1 đơn vị khỏi kho' : 'Stock unit removed (-1)')
+      );
+    } catch (err: any) {
+      toast.error(err?.message || 'Lỗi cập nhật số lượng kho');
+    }
+  };
 
   // Employee Modal State
   let isEmployeeModalOpen = $state(false);
@@ -159,26 +186,37 @@
     isShopModalOpen = true;
   };
 
-  const handleSaveShop = (e: SubmitEvent) => {
+  const handleSaveShop = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!shopFormData.name || !shopFormData.address || !shopFormData.managerName) {
       toast.error($language === 'vi' ? 'Vui lòng điền đầy đủ các thông tin bắt buộc.' : 'Please fill in all required shop details.');
       return;
     }
-    if (editingShop) {
-      updateRetailShop(editingShop.id, shopFormData);
-      toast.success($language === 'vi' ? `Đã cập nhật chi nhánh ${shopFormData.name}` : `Updated shop ${shopFormData.name}`);
-    } else {
-      addRetailShop(shopFormData);
-      toast.success($language === 'vi' ? `Đã thêm chi nhánh ${shopFormData.name}` : `Added new shop ${shopFormData.name}`);
+    isSubmitting = true;
+    try {
+      if (editingShop) {
+        await updateRetailShop(editingShop.id, shopFormData);
+        toast.success($language === 'vi' ? `Đã cập nhật chi nhánh ${shopFormData.name}` : `Updated shop ${shopFormData.name}`);
+      } else {
+        await addRetailShop(shopFormData);
+        toast.success($language === 'vi' ? `Đã thêm chi nhánh ${shopFormData.name}` : `Added new shop ${shopFormData.name}`);
+      }
+      isShopModalOpen = false;
+    } catch (err: any) {
+      toast.error(err?.message || 'Lỗi lưu chi nhánh');
+    } finally {
+      isSubmitting = false;
     }
-    isShopModalOpen = false;
   };
 
-  const handleDeleteShop = (shp: RetailShop) => {
+  const handleDeleteShop = async (shp: RetailShop) => {
     if (window.confirm($language === 'vi' ? `Xóa chi nhánh "${shp.name}" (${shp.shopCode})?` : `Remove shop "${shp.name}"?`)) {
-      deleteRetailShop(shp.id);
-      toast.success($language === 'vi' ? `Đã xóa chi nhánh ${shp.name}.` : `Shop ${shp.name} removed.`);
+      try {
+        await deleteRetailShop(shp.id);
+        toast.success($language === 'vi' ? `Đã xóa chi nhánh ${shp.name}.` : `Shop ${shp.name} removed.`);
+      } catch (err: any) {
+        toast.error(err?.message || 'Lỗi xóa chi nhánh');
+      }
     }
   };
 
@@ -225,26 +263,37 @@
     isStockModalOpen = true;
   };
 
-  const handleSaveStock = (e: SubmitEvent) => {
+  const handleSaveStock = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!stockFormData.name || !stockFormData.itemCode) {
       toast.error($language === 'vi' ? 'Vui lòng điền tên và mã thiết bị.' : 'Please enter item name and code.');
       return;
     }
-    if (editingStock) {
-      updateInventoryItem(editingStock.id, stockFormData);
-      toast.success($language === 'vi' ? `Đã cập nhật vật tư ${stockFormData.name}` : `Updated item ${stockFormData.name}`);
-    } else {
-      addInventoryItem(stockFormData);
-      toast.success($language === 'vi' ? `Đã thêm vật tư ${stockFormData.name}` : `Added item ${stockFormData.name}`);
+    isSubmitting = true;
+    try {
+      if (editingStock) {
+        await updateInventoryItem(editingStock.id, stockFormData);
+        toast.success($language === 'vi' ? `Đã cập nhật vật tư ${stockFormData.name}` : `Updated item ${stockFormData.name}`);
+      } else {
+        await addInventoryItem(stockFormData);
+        toast.success($language === 'vi' ? `Đã thêm vật tư ${stockFormData.name}` : `Added item ${stockFormData.name}`);
+      }
+      isStockModalOpen = false;
+    } catch (err: any) {
+      toast.error(err?.message || 'Lỗi lưu vật tư');
+    } finally {
+      isSubmitting = false;
     }
-    isStockModalOpen = false;
   };
 
-  const handleDeleteStock = (item: InventoryItem) => {
+  const handleDeleteStock = async (item: InventoryItem) => {
     if (window.confirm($language === 'vi' ? `Xóa vật tư "${item.name}" (${item.itemCode})?` : `Remove item "${item.name}"?`)) {
-      deleteInventoryItem(item.id);
-      toast.success($language === 'vi' ? `Đã xóa vật tư ${item.name}.` : `Item ${item.name} removed.`);
+      try {
+        await deleteInventoryItem(item.id);
+        toast.success($language === 'vi' ? `Đã xóa vật tư ${item.name}.` : `Item ${item.name} removed.`);
+      } catch (err: any) {
+        toast.error(err?.message || 'Lỗi xóa vật tư');
+      }
     }
   };
 
@@ -280,27 +329,38 @@
     isEmployeeModalOpen = true;
   };
 
-  const handleSaveEmployee = (e: SubmitEvent) => {
+  const handleSaveEmployee = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!employeeFormData.name || !employeeFormData.email || !employeeFormData.phone) {
       toast.error('Please complete all required fields.');
       return;
     }
 
-    if (editingEmployee) {
-      updateEmployee(editingEmployee.id, employeeFormData);
-      toast.success(`Updated employee ${employeeFormData.name}`);
-    } else {
-      addEmployee(employeeFormData);
-      toast.success(`Added new employee ${employeeFormData.name}`);
+    isSubmitting = true;
+    try {
+      if (editingEmployee) {
+        await updateEmployee(editingEmployee.id, employeeFormData);
+        toast.success(`Updated employee ${employeeFormData.name}`);
+      } else {
+        await addEmployee(employeeFormData);
+        toast.success(`Added new employee ${employeeFormData.name}`);
+      }
+      isEmployeeModalOpen = false;
+    } catch (err: any) {
+      toast.error(err?.message || 'Lỗi lưu nhân viên');
+    } finally {
+      isSubmitting = false;
     }
-    isEmployeeModalOpen = false;
   };
 
-  const handleDeleteEmployee = (emp: Employee) => {
+  const handleDeleteEmployee = async (emp: Employee) => {
     if (window.confirm(`Are you sure you want to remove employee "${emp.name}" (${emp.employeeCode})?`)) {
-      deleteEmployee(emp.id);
-      toast.success(`Employee ${emp.name} removed.`);
+      try {
+        await deleteEmployee(emp.id);
+        toast.success(`Employee ${emp.name} removed.`);
+      } catch (err: any) {
+        toast.error(err?.message || 'Lỗi xóa nhân viên');
+      }
     }
   };
 
@@ -336,27 +396,38 @@
     isVendorModalOpen = true;
   };
 
-  const handleSaveVendor = (e: SubmitEvent) => {
+  const handleSaveVendor = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!vendorFormData.companyName || !vendorFormData.contactPerson) {
       toast.error('Please enter company name and primary contact.');
       return;
     }
 
-    if (editingVendor) {
-      updateVendor(editingVendor.id, vendorFormData);
-      toast.success(`Updated vendor ${vendorFormData.companyName}`);
-    } else {
-      addVendor(vendorFormData);
-      toast.success(`Registered vendor ${vendorFormData.companyName}`);
+    isSubmitting = true;
+    try {
+      if (editingVendor) {
+        await updateVendor(editingVendor.id, vendorFormData);
+        toast.success(`Updated vendor ${vendorFormData.companyName}`);
+      } else {
+        await addVendor(vendorFormData);
+        toast.success(`Registered vendor ${vendorFormData.companyName}`);
+      }
+      isVendorModalOpen = false;
+    } catch (err: any) {
+      toast.error(err?.message || 'Lỗi lưu nhà cung cấp');
+    } finally {
+      isSubmitting = false;
     }
-    isVendorModalOpen = false;
   };
 
-  const handleDeleteVendor = (vnd: Vendor) => {
+  const handleDeleteVendor = async (vnd: Vendor) => {
     if (window.confirm(`Confirm termination of supplier "${vnd.companyName}"?`)) {
-      deleteVendor(vnd.id);
-      toast.success(`Vendor ${vnd.companyName} removed.`);
+      try {
+        await deleteVendor(vnd.id);
+        toast.success(`Vendor ${vnd.companyName} removed.`);
+      } catch (err: any) {
+        toast.error(err?.message || 'Lỗi xóa nhà cung cấp');
+      }
     }
   };
 
@@ -398,21 +469,28 @@
     isPlanModalOpen = true;
   };
 
-  const handleSavePlan = (e: SubmitEvent) => {
+  const handleSavePlan = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!planFormData.name || !planFormData.speedOrBandwidth) {
       toast.error('Please enter plan name and speed specifications.');
       return;
     }
 
-    if (editingPlan) {
-      updatePlan(editingPlan.id, planFormData);
-      toast.success(`Updated plan ${planFormData.name}`);
-    } else {
-      addPlan(planFormData);
-      toast.success(`Created plan ${planFormData.name}`);
+    isSubmitting = true;
+    try {
+      if (editingPlan) {
+        await updatePlan(editingPlan.id, planFormData);
+        toast.success(`Updated plan ${planFormData.name}`);
+      } else {
+        await addPlan(planFormData);
+        toast.success(`Created plan ${planFormData.name}`);
+      }
+      isPlanModalOpen = false;
+    } catch (err: any) {
+      toast.error(err?.message || 'Lỗi lưu gói cước');
+    } finally {
+      isSubmitting = false;
     }
-    isPlanModalOpen = false;
   };
 
 
@@ -431,6 +509,68 @@
         emp.email.toLowerCase().includes(employeeSearch.toLowerCase());
       const matchesRole = employeeRoleFilter === 'All' || emp.role === employeeRoleFilter;
       return matchesSearch && matchesRole;
+    })
+  );
+
+  // Filtering Plans
+  const filteredPlans = $derived(
+    $plans.filter((p) => {
+      const q = planSearch.toLowerCase();
+      const matchesSearch =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.speedOrBandwidth.toLowerCase().includes(q) ||
+        (p.description && p.description.toLowerCase().includes(q)) ||
+        p.id.toLowerCase().includes(q);
+      const matchesType = planTypeFilter === 'All' || p.type === planTypeFilter;
+      const matchesStatus = planStatusFilter === 'All' || p.status === planStatusFilter;
+      return matchesSearch && matchesType && matchesStatus;
+    })
+  );
+
+  // Filtering Inventory
+  const filteredInventory = $derived(
+    $inventory.filter((item) => {
+      const q = stockSearch.toLowerCase();
+      const matchesSearch =
+        !q ||
+        item.name.toLowerCase().includes(q) ||
+        item.itemCode.toLowerCase().includes(q) ||
+        (item.location && item.location.toLowerCase().includes(q)) ||
+        (item.supplier && item.supplier.toLowerCase().includes(q));
+      const matchesCategory = stockCategoryFilter === 'All' || item.category === stockCategoryFilter;
+      return matchesSearch && matchesCategory;
+    })
+  );
+
+  // Filtering Vendors
+  const filteredVendors = $derived(
+    $vendors.filter((vnd) => {
+      const q = vendorSearch.toLowerCase();
+      const matchesSearch =
+        !q ||
+        vnd.companyName.toLowerCase().includes(q) ||
+        vnd.vendorCode.toLowerCase().includes(q) ||
+        (vnd.contactPerson && vnd.contactPerson.toLowerCase().includes(q)) ||
+        (vnd.email && vnd.email.toLowerCase().includes(q)) ||
+        (vnd.phone && vnd.phone.toLowerCase().includes(q));
+      const matchesCat = vendorCategoryFilter === 'All' || vnd.category === vendorCategoryFilter;
+      return matchesSearch && matchesCat;
+    })
+  );
+
+  // Filtering Shops
+  const filteredShops = $derived(
+    $retailShops.filter((shp) => {
+      const q = shopSearch.toLowerCase();
+      return (
+        !q ||
+        shp.name.toLowerCase().includes(q) ||
+        shp.shopCode.toLowerCase().includes(q) ||
+        shp.city.toLowerCase().includes(q) ||
+        shp.address.toLowerCase().includes(q) ||
+        (shp.managerName && shp.managerName.toLowerCase().includes(q))
+      );
     })
   );
 
@@ -778,13 +918,33 @@
       </div>
 
       <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
-        <div class="p-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div class="text-xs font-semibold uppercase text-slate-500">
-            {$language === 'vi' ? `Danh mục vật tư kho (${$inventory.length})` : `Inventory Items (${$inventory.length})`}
+        <div class="p-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div class="flex flex-1 flex-wrap items-center gap-2">
+            <div class="relative flex-1 min-w-[200px] max-w-xs">
+              <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder={$language === 'vi' ? 'Tìm tên, mã VT, vị trí, NCC...' : 'Search item code, name, vendor...'}
+                bind:value={stockSearch}
+                class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <select
+              bind:value={stockCategoryFilter}
+              class="px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg"
+            >
+              <option value="All">{$language === 'vi' ? 'Tất cả danh mục' : 'All Categories'}</option>
+              <option value="Modem">Modem</option>
+              <option value="Router">Router</option>
+              <option value="Fiber ONT">Fiber ONT</option>
+              <option value="Splitter">Splitter</option>
+              <option value="Patch Cord">Patch Cord</option>
+              <option value="VoIP Adapter">VoIP Adapter</option>
+            </select>
           </div>
           <button
             onclick={() => handleOpenStockModal()}
-            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center space-x-1 shadow-sm"
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center space-x-1 shadow-sm whitespace-nowrap"
           >
             <Plus class="h-3.5 w-3.5" />
             <span>{$language === 'vi' ? 'Thêm vật tư thiết bị' : 'Add Item'}</span>
@@ -798,7 +958,7 @@
                 <th class="px-4 py-3">{$language === 'vi' ? 'Tên thiết bị / Vật tư' : 'Device / Equipment Name'}</th>
                 <th class="px-4 py-3">{$language === 'vi' ? 'Danh mục' : 'Category'}</th>
                 <th class="px-4 py-3">{$language === 'vi' ? 'Vị trí kho' : 'Depot Location'}</th>
-                <th class="px-4 py-3">{$language === 'vi' ? 'Số lượng tồn' : 'Stock Units'}</th>
+                <th class="px-4 py-3">{$language === 'vi' ? 'Số lượng tồn (Điều chỉnh nhanh)' : 'Stock Units (Quick +/-)'}</th>
                 <th class="px-4 py-3">{$language === 'vi' ? 'Ngưỡng đặt lại' : 'Reorder Threshold'}</th>
                 <th class="px-4 py-3">{$language === 'vi' ? 'Đơn giá' : 'Unit Cost'}</th>
                 <th class="px-4 py-3">{$language === 'vi' ? 'Nhà cung cấp' : 'Supplier'}</th>
@@ -806,7 +966,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-              {#each $inventory as item (item.id)}
+              {#each filteredInventory as item (item.id)}
                 {@const isLow = item.stockQuantity <= item.reorderLevel}
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td class="px-4 py-3 font-mono font-medium text-slate-900 dark:text-slate-100">{item.itemCode}</td>
@@ -816,14 +976,27 @@
                   </td>
                   <td class="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">{item.location}</td>
                   <td class="px-4 py-3">
-                    <span class="font-semibold tabular-nums {isLow ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100'}">
-                      {item.stockQuantity}
-                    </span>
-                    {#if isLow}
-                      <span class="ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 uppercase">
-                        {$language === 'vi' ? 'Sắp hết' : 'Low'}
+                    <div class="flex items-center space-x-1.5">
+                      <button
+                        onclick={() => handleQuickStockAdjust(item.id, -1)}
+                        disabled={item.stockQuantity <= 0}
+                        class="h-6 w-6 rounded bg-slate-100 dark:bg-slate-800 hover:bg-rose-100 dark:hover:bg-rose-900/40 hover:text-rose-600 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs disabled:opacity-30 transition"
+                        title={$language === 'vi' ? 'Xuất 1 thiết bị (-1)' : 'Decrease by 1'}
+                      >-</button>
+                      <span class="font-semibold tabular-nums min-w-[28px] text-center {isLow ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-slate-100'}">
+                        {item.stockQuantity}
                       </span>
-                    {/if}
+                      <button
+                        onclick={() => handleQuickStockAdjust(item.id, 1)}
+                        class="h-6 w-6 rounded bg-slate-100 dark:bg-slate-800 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 hover:text-emerald-600 text-slate-600 dark:text-slate-300 flex items-center justify-center font-bold text-xs transition"
+                        title={$language === 'vi' ? 'Nhập 1 thiết bị (+1)' : 'Increase by 1'}
+                      >+</button>
+                      {#if isLow}
+                        <span class="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 uppercase">
+                          {$language === 'vi' ? 'Sắp hết' : 'Low'}
+                        </span>
+                      {/if}
+                    </div>
                   </td>
                   <td class="px-4 py-3 text-xs text-slate-500 tabular-nums">{item.reorderLevel}</td>
                   <td class="px-4 py-3 font-mono tabular-nums text-xs">${item.unitCost.toFixed(2)}</td>
@@ -859,6 +1032,36 @@
   {#if activeTab === 'vendors'}
     <div class="space-y-4">
       <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 overflow-hidden shadow-sm">
+        <div class="p-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+          <div class="flex flex-1 flex-wrap items-center gap-2">
+            <div class="relative flex-1 min-w-[200px] max-w-xs">
+              <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder={$language === 'vi' ? 'Tìm NCC, công ty, người liên hệ...' : 'Search vendor, company, contact...'}
+                bind:value={vendorSearch}
+                class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <select
+              bind:value={vendorCategoryFilter}
+              class="px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg"
+            >
+              <option value="All">{$language === 'vi' ? 'Tất cả lĩnh vực' : 'All Categories'}</option>
+              <option value="Fiber Optics & Cabling">Fiber Optics & Cabling</option>
+              <option value="Modems & Routers">Modems & Routers</option>
+              <option value="Telecom Switches">Telecom Switches</option>
+              <option value="Field Tooling">Field Tooling</option>
+            </select>
+          </div>
+          <button
+            onclick={() => handleOpenVendorModal()}
+            class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center space-x-1 shadow-sm whitespace-nowrap"
+          >
+            <Plus class="h-3.5 w-3.5" />
+            <span>{$language === 'vi' ? 'Thêm nhà cung cấp' : 'Add Vendor'}</span>
+          </button>
+        </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left text-sm">
             <thead class="bg-slate-50 dark:bg-slate-800/60 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-800">
@@ -874,7 +1077,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-              {#each $vendors as vnd (vnd.id)}
+              {#each filteredVendors as vnd (vnd.id)}
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40">
                   <td class="px-4 py-3 font-mono font-medium text-slate-900 dark:text-slate-100">{vnd.vendorCode}</td>
                   <td class="px-4 py-3 font-semibold text-slate-900 dark:text-white">{vnd.companyName}</td>
@@ -923,7 +1126,7 @@
   {#if activeTab === 'shops'}
     <div class="space-y-4">
       <div class="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
+        <div class="flex-1">
           <h3 class="font-semibold text-slate-900 dark:text-white">
             {$language === 'vi' ? 'Mạng lưới điểm bán lẻ & Chi nhánh khu vực' : 'Retail Outlet Network & Regional Centers'}
           </h3>
@@ -933,17 +1136,28 @@
               : 'Manage outlets, city codes (3 digits in Account ID), staffing and subscriber metrics.'}
           </p>
         </div>
-        <button
-          onclick={() => handleOpenShopModal()}
-          class="px-4 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition flex items-center space-x-1.5 shadow-sm"
-        >
-          <Plus class="h-4 w-4" />
-          <span>{$language === 'vi' ? 'Thêm điểm bán lẻ' : 'New Outlet'}</span>
-        </button>
+        <div class="flex items-center space-x-2 w-full sm:w-auto">
+          <div class="relative flex-1 sm:w-64">
+            <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder={$language === 'vi' ? 'Tìm chi nhánh, mã, thành phố...' : 'Search shop, city, manager...'}
+              bind:value={shopSearch}
+              class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <button
+            onclick={() => handleOpenShopModal()}
+            class="px-4 py-2 rounded-lg text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white transition flex items-center space-x-1.5 shadow-sm whitespace-nowrap"
+          >
+            <Plus class="h-4 w-4" />
+            <span>{$language === 'vi' ? 'Thêm điểm bán lẻ' : 'New Outlet'}</span>
+          </button>
+        </div>
       </div>
 
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {#each $retailShops as shop (shop.id)}
+        {#each filteredShops as shop (shop.id)}
           <div class="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-5 shadow-sm space-y-4">
             <div class="flex items-start justify-between">
               <div class="flex items-center space-x-3">
@@ -1023,16 +1237,42 @@
           </p>
         </div>
 
-        <div class="flex items-center space-x-2">
-          <span class="inline-flex items-center px-2 py-1 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs font-medium">
-            <Wifi class="h-3.5 w-3.5 mr-1" /> {$language === 'vi' ? 'Băng rộng' : 'Broadband'}
-          </span>
-          <span class="inline-flex items-center px-2 py-1 rounded bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs font-medium">
-            <Radio class="h-3.5 w-3.5 mr-1" /> {$language === 'vi' ? 'Quay số' : 'Dial-Up'}
-          </span>
-          <span class="inline-flex items-center px-2 py-1 rounded bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 text-xs font-medium">
-            <Phone class="h-3.5 w-3.5 mr-1" /> {$language === 'vi' ? 'Điện thoại cố định' : 'Landline'}
-          </span>
+        <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <div class="relative flex-1 sm:w-56">
+            <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder={$language === 'vi' ? 'Tìm gói cước, băng thông...' : 'Search plan, bandwidth...'}
+              bind:value={planSearch}
+              class="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <select
+            bind:value={planTypeFilter}
+            aria-label={$language === 'vi' ? 'Lọc theo loại kết nối' : 'Filter by connection type'}
+            class="px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 dark:text-slate-200"
+          >
+            <option value="All">{$language === 'vi' ? 'Tất cả loại hình' : 'All Types'}</option>
+            <option value="Broadband">{$language === 'vi' ? 'Cáp quang (Broadband)' : 'Broadband'}</option>
+            <option value="Dial-Up">{$language === 'vi' ? 'Quay số (Dial-Up)' : 'Dial-Up'}</option>
+            <option value="Landline">{$language === 'vi' ? 'Cố định (Landline)' : 'Landline'}</option>
+          </select>
+          <select
+            bind:value={planStatusFilter}
+            aria-label={$language === 'vi' ? 'Lọc theo trạng thái' : 'Filter by status'}
+            class="px-2.5 py-1.5 text-xs bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-slate-700 dark:text-slate-200"
+          >
+            <option value="All">{$language === 'vi' ? 'Tất cả trạng thái' : 'All Status'}</option>
+            <option value="Active">{$language === 'vi' ? 'Hoạt động' : 'Active'}</option>
+            <option value="Archived">{$language === 'vi' ? 'Lưu trữ' : 'Archived'}</option>
+          </select>
+          <button
+            onclick={() => handleOpenPlanModal()}
+            class="px-3.5 py-1.5 rounded-lg text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center space-x-1.5 shadow-sm whitespace-nowrap"
+          >
+            <Plus class="h-4 w-4" />
+            <span>{$language === 'vi' ? 'Thêm gói cước' : 'New Plan'}</span>
+          </button>
         </div>
       </div>
 
@@ -1054,7 +1294,7 @@
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 dark:divide-slate-800">
-              {#each $plans as plan (plan.id)}
+              {#each filteredPlans as plan (plan.id)}
                 <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
                   <td class="px-4 py-3 max-w-xs">
                     <div class="font-semibold text-slate-900 dark:text-white">{getPlanName(plan, $language)}</div>
@@ -1096,10 +1336,14 @@
                         <Edit2 class="h-4 w-4" />
                       </button>
                       <button
-                        onclick={() => {
+                        onclick={async () => {
                           if (window.confirm($language === 'vi' ? `Xóa gói cước "${plan.name}"?` : `Delete plan "${plan.name}"?`)) {
-                            deletePlan(plan.id);
-                            toast.success($language === 'vi' ? `Đã xóa gói ${plan.name}.` : `Plan ${plan.name} removed.`);
+                            try {
+                              await deletePlan(plan.id);
+                              toast.success($language === 'vi' ? `Đã xóa gói ${plan.name}.` : `Plan ${plan.name} removed.`);
+                            } catch (err: any) {
+                              toast.error(err?.message || 'Lỗi xóa gói cước');
+                            }
                           }
                         }}
                         class="p-1.5 rounded-md hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-400 hover:text-rose-600 transition"
@@ -1327,11 +1571,14 @@
             </button>
             <button
               type="submit"
-              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow"
+              disabled={isSubmitting}
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {editingEmployee
-                ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
-                : ($language === 'vi' ? 'Xác nhận tiếp nhận' : 'Confirm & Onboard')}
+              {isSubmitting
+                ? ($language === 'vi' ? 'Đang lưu...' : 'Saving...')
+                : editingEmployee
+                  ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
+                  : ($language === 'vi' ? 'Xác nhận tiếp nhận' : 'Confirm & Onboard')}
             </button>
           </div>
         </form>
@@ -1456,11 +1703,14 @@
             </button>
             <button
               type="submit"
-              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow"
+              disabled={isSubmitting}
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {editingVendor
-                ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
-                : ($language === 'vi' ? 'Xác nhận nhà cung cấp' : 'Confirm Vendor')}
+              {isSubmitting
+                ? ($language === 'vi' ? 'Đang lưu...' : 'Saving...')
+                : editingVendor
+                  ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
+                  : ($language === 'vi' ? 'Xác nhận nhà cung cấp' : 'Confirm Vendor')}
             </button>
           </div>
         </form>
@@ -1626,11 +1876,14 @@
             </button>
             <button
               type="submit"
-              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow"
+              disabled={isSubmitting}
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {editingPlan
-                ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
-                : ($language === 'vi' ? 'Xác nhận gói cước' : 'Confirm Plan')}
+              {isSubmitting
+                ? ($language === 'vi' ? 'Đang lưu...' : 'Saving...')
+                : editingPlan
+                  ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
+                  : ($language === 'vi' ? 'Xác nhận gói cước' : 'Confirm Plan')}
             </button>
           </div>
         </form>
@@ -1749,11 +2002,14 @@
             </button>
             <button
               type="submit"
-              class="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition shadow"
+              disabled={isSubmitting}
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-blue-600 hover:bg-blue-700 text-white transition shadow disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {editingShop
-                ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
-                : ($language === 'vi' ? 'Thêm điểm bán lẻ' : 'Confirm Shop')}
+              {isSubmitting
+                ? ($language === 'vi' ? 'Đang lưu...' : 'Saving...')
+                : editingShop
+                  ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
+                  : ($language === 'vi' ? 'Thêm điểm bán lẻ' : 'Confirm Shop')}
             </button>
           </div>
         </form>
@@ -1862,11 +2118,14 @@
             </button>
             <button
               type="submit"
-              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow"
+              disabled={isSubmitting}
+              class="px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {editingStock
-                ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
-                : ($language === 'vi' ? 'Thêm vật tư' : 'Confirm Item')}
+              {isSubmitting
+                ? ($language === 'vi' ? 'Đang lưu...' : 'Saving...')
+                : editingStock
+                  ? ($language === 'vi' ? 'Lưu thay đổi' : 'Save Changes')
+                  : ($language === 'vi' ? 'Thêm vật tư' : 'Confirm Item')}
             </button>
           </div>
         </form>
