@@ -34,11 +34,13 @@
     FileText,
     ShieldCheck,
     Wrench,
+    CalendarClock,
+    History,
+    PackageOpen,
   } from "lucide-svelte";
   import type {
     Connection,
     Order,
-    Connection,
     ConnectionStatus,
     Equipment,
     OrderStatus,
