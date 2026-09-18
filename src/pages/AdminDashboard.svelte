@@ -9,6 +9,7 @@
   import {
     Users, Store, Truck, Layers, Package, Plus, Search, Edit2, Trash2,
     TrendingUp, CheckCircle2, Phone, MapPin, Wifi, Radio, X, Settings, MessageSquare,
+    KeyRound, Eye, EyeOff, AlertTriangle, RefreshCw, ArrowUpRight, ShieldCheck,
   } from 'lucide-svelte';
   import type { Employee, Vendor, Plan, RetailShop, InventoryItem } from '../types/nexus';
   import { toast } from 'svelte-sonner';
@@ -63,6 +64,8 @@
     retailShopAssigned: 'Downtown Flagship (SH-01)',
     status: 'Active' as Employee['status'],
     dateOfJoining: new Date().toISOString().slice(0, 10),
+    password: '',
+    showPassword: false,
   });
 
   // Vendor Modal State
@@ -193,11 +196,13 @@
     unitCost: 65,
     location: 'Central Depot NYC',
     supplier: 'Allied Optical Instruments',
+    restockQuantity: 10,
   });
 
   const handleOpenStockModal = (item?: InventoryItem) => {
     if (item) {
       editingStock = item;
+      const needed = Math.max(0, item.reorderLevel - item.stockQuantity);
       stockFormData = {
         itemCode: item.itemCode,
         name: item.name,
@@ -207,6 +212,7 @@
         unitCost: item.unitCost,
         location: item.location,
         supplier: item.supplier,
+        restockQuantity: needed > 0 ? needed : 10,
       };
     } else {
       editingStock = null;
@@ -219,25 +225,34 @@
         unitCost: 80,
         location: 'Central Depot NYC',
         supplier: 'Allied Optical Instruments',
+        restockQuantity: 10,
       };
     }
     isStockModalOpen = true;
   };
 
-  const handleSaveStock = (e: SubmitEvent) => {
+  let isSavingStock = $state(false);
+  const handleSaveStock = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!stockFormData.name || !stockFormData.itemCode) {
       toast.error($language === 'vi' ? 'Vui lòng điền tên và mã thiết bị.' : 'Please enter item name and code.');
       return;
     }
-    if (editingStock) {
-      updateInventoryItem(editingStock.id, stockFormData);
-      toast.success($language === 'vi' ? `Đã cập nhật vật tư ${stockFormData.name}` : `Updated item ${stockFormData.name}`);
-    } else {
-      addInventoryItem(stockFormData);
-      toast.success($language === 'vi' ? `Đã thêm vật tư ${stockFormData.name}` : `Added item ${stockFormData.name}`);
+    isSavingStock = true;
+    try {
+      if (editingStock) {
+        await updateInventoryItem(editingStock.id, stockFormData);
+        toast.success($language === 'vi' ? `Đã cập nhật vật tư ${stockFormData.name} (Tồn kho: ${stockFormData.stockQuantity}) vào CSDL` : `Updated item ${stockFormData.name}`);
+      } else {
+        await addInventoryItem(stockFormData);
+        toast.success($language === 'vi' ? `Đã thêm vật tư ${stockFormData.name} vào CSDL` : `Added item ${stockFormData.name}`);
+      }
+      isStockModalOpen = false;
+    } catch (err: any) {
+      toast.error(err.message || ($language === 'vi' ? 'Lỗi khi lưu vật tư vào CSDL.' : 'Error saving item.'));
+    } finally {
+      isSavingStock = false;
     }
-    isStockModalOpen = false;
   };
 
   const handleDeleteStock = (item: InventoryItem) => {
@@ -261,6 +276,8 @@
         retailShopAssigned: emp.retailShopAssigned || 'Downtown Flagship (SH-01)',
         status: emp.status,
         dateOfJoining: emp.dateOfJoining,
+        password: '',
+        showPassword: false,
       };
     } else {
       editingEmployee = null;
@@ -274,26 +291,36 @@
         retailShopAssigned: 'Downtown Flagship (SH-01)',
         status: 'Active',
         dateOfJoining: new Date().toISOString().slice(0, 10),
+        password: '',
+        showPassword: false,
       };
     }
     isEmployeeModalOpen = true;
   };
 
-  const handleSaveEmployee = (e: SubmitEvent) => {
+  let isSavingEmployee = $state(false);
+  const handleSaveEmployee = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!employeeFormData.name || !employeeFormData.email || !employeeFormData.phone) {
-      toast.error('Please complete all required fields.');
+      toast.error($language === 'vi' ? 'Vui lòng điền đầy đủ các thông tin bắt buộc.' : 'Please complete all required fields.');
       return;
     }
 
-    if (editingEmployee) {
-      updateEmployee(editingEmployee.id, employeeFormData);
-      toast.success(`Updated employee ${employeeFormData.name}`);
-    } else {
-      addEmployee(employeeFormData);
-      toast.success(`Added new employee ${employeeFormData.name}`);
+    isSavingEmployee = true;
+    try {
+      if (editingEmployee) {
+        await updateEmployee(editingEmployee.id, employeeFormData, employeeFormData.password || undefined);
+        toast.success($language === 'vi' ? `Đã cập nhật tài khoản và thông tin nhân viên ${employeeFormData.name}` : `Updated employee ${employeeFormData.name}`);
+      } else {
+        await addEmployee(employeeFormData, employeeFormData.password || undefined);
+        toast.success($language === 'vi' ? `Đã thêm mới nhân viên ${employeeFormData.name} thành công` : `Added new employee ${employeeFormData.name}`);
+      }
+      isEmployeeModalOpen = false;
+    } catch (err: any) {
+      toast.error(err.message || ($language === 'vi' ? 'Lỗi khi lưu thông tin nhân viên.' : 'Error saving employee.'));
+    } finally {
+      isSavingEmployee = false;
     }
-    isEmployeeModalOpen = false;
   };
 
   const handleDeleteEmployee = (emp: Employee) => {
@@ -1232,31 +1259,76 @@
             </div>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                {$language === 'vi' ? 'Địa chỉ Email *' : 'Email Address *'}
-              </label>
-              <input
-                type="email"
-                required
-                placeholder="name@nexus.telecom"
-                bind:value={employeeFormData.email}
-                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm"
-              />
+          <!-- Account & Security Section -->
+          <div class="p-3.5 rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/50 dark:bg-indigo-950/20 space-y-3">
+            <div class="flex items-center space-x-2 text-indigo-700 dark:text-indigo-400 font-semibold text-xs">
+              <KeyRound class="h-4 w-4" />
+              <span>{$language === 'vi' ? 'Tài khoản đăng nhập & Mật khẩu' : 'Login Account & Security'}</span>
             </div>
-            <div>
-              <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                {$language === 'vi' ? 'Số điện thoại *' : 'Phone Number *'}
-              </label>
-              <input
-                type="tel"
-                required
-                placeholder="+84 901 234 567"
-                bind:value={employeeFormData.phone}
-                class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm"
-              />
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+                  {$language === 'vi' ? 'Tài khoản (Email) *' : 'Account (Email) *'}
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="name@nexus.telecom"
+                  bind:value={employeeFormData.email}
+                  class="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm"
+                />
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between mb-1">
+                  <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    {$language === 'vi' ? (editingEmployee ? 'Mật khẩu mới' : 'Mật khẩu khởi tạo *') : (editingEmployee ? 'New Password' : 'Initial Password *')}
+                  </label>
+                </div>
+                <div class="relative">
+                  <input
+                    type={employeeFormData.showPassword ? 'text' : 'password'}
+                    placeholder={editingEmployee
+                      ? ($language === 'vi' ? 'Để trống nếu giữ nguyên' : 'Leave blank if unchanged')
+                      : ($language === 'vi' ? 'Mặc định: Nexus@123' : 'Default: Nexus@123')}
+                    bind:value={employeeFormData.password}
+                    class="w-full pl-3 pr-9 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-sm"
+                  />
+                  <button
+                    type="button"
+                    onclick={() => (employeeFormData.showPassword = !employeeFormData.showPassword)}
+                    class="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5"
+                    tabindex="-1"
+                  >
+                    {#if employeeFormData.showPassword}
+                      <EyeOff class="h-4 w-4" />
+                    {:else}
+                      <Eye class="h-4 w-4" />
+                    {/if}
+                  </button>
+                </div>
+              </div>
             </div>
+
+            <p class="text-[11px] text-slate-500 dark:text-slate-400">
+              {$language === 'vi'
+                ? 'ℹ️ Tài khoản và mật khẩu này dùng để đăng nhập vào Nexus Portal và lưu trực tiếp vào CSDL.'
+                : 'ℹ️ These credentials are used to sign into the Nexus Portal and are saved directly to the DB.'}
+            </p>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              {$language === 'vi' ? 'Số điện thoại liên hệ *' : 'Contact Phone Number *'}
+            </label>
+            <input
+              type="tel"
+              required
+              placeholder="+84 901 234 567"
+              bind:value={employeeFormData.phone}
+              class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm"
+            />
           </div>
 
           <div class="grid grid-cols-2 gap-3">
@@ -1825,6 +1897,137 @@
               </label>
               <input type="number" min="0" step="0.01" bind:value={stockFormData.unitCost}
                 class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm" />
+            </div>
+          </div>
+
+          <!-- Restock Missing Items Section -->
+          <div class="p-3.5 rounded-xl border {stockFormData.stockQuantity <= stockFormData.reorderLevel ? 'border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/30' : 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50'} space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center space-x-2">
+                {#if stockFormData.stockQuantity <= stockFormData.reorderLevel}
+                  <AlertTriangle class="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span class="font-bold text-xs text-amber-800 dark:text-amber-300">
+                    {$language === 'vi' ? 'Nhập thêm mặt hàng đang thiếu' : 'Replenish Low / Missing Stock'}
+                  </span>
+                {:else}
+                  <RefreshCw class="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  <span class="font-bold text-xs text-slate-800 dark:text-slate-200">
+                    {$language === 'vi' ? 'Nhập bổ sung kho hàng' : 'Restock / Replenish Stock'}
+                  </span>
+                {/if}
+              </div>
+
+              {#if stockFormData.stockQuantity <= stockFormData.reorderLevel}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 dark:bg-amber-900/60 text-amber-800 dark:text-amber-300">
+                  {$language === 'vi' ? `Thiếu ít nhất ${Math.max(1, stockFormData.reorderLevel - stockFormData.stockQuantity)} sp` : `Short by ${Math.max(1, stockFormData.reorderLevel - stockFormData.stockQuantity)}`}
+                </span>
+              {:else}
+                <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400">
+                  {$language === 'vi' ? 'Tồn kho an toàn' : 'Healthy Stock'}
+                </span>
+              {/if}
+            </div>
+
+            {#if stockFormData.stockQuantity <= stockFormData.reorderLevel}
+              <div class="text-[11px] text-amber-700 dark:text-amber-300/90 leading-relaxed">
+                {$language === 'vi'
+                  ? `Mặt hàng này đang dưới ngưỡng an toàn (Tồn: ${stockFormData.stockQuantity} / Tối thiểu: ${stockFormData.reorderLevel}). Hãy nhập thêm để đảm bảo cung ứng lắp đặt mạng.`
+                  : `Item is below minimum safety threshold (In stock: ${stockFormData.stockQuantity} / Reorder level: ${stockFormData.reorderLevel}). Please restock to prevent outages.`}
+              </div>
+            {/if}
+
+            <div>
+              <label class="block font-semibold text-slate-700 dark:text-slate-300 mb-1.5 text-[11px]">
+                {$language === 'vi' ? 'Số lượng nhập thêm vào kho' : 'Quantity to Add to Stock'}
+              </label>
+              <div class="flex items-center gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  bind:value={stockFormData.restockQuantity}
+                  placeholder="10"
+                  class="w-32 px-3 py-1.5 bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg text-sm font-semibold"
+                />
+                <button
+                  type="button"
+                  onclick={() => {
+                    const qty = Number(stockFormData.restockQuantity) || 0;
+                    if (qty > 0) {
+                      stockFormData.stockQuantity += qty;
+                      toast.success($language === 'vi' ? `Đã cộng thêm +${qty} sản phẩm vào tồn kho!` : `Added +${qty} to stock quantity!`);
+                    }
+                  }}
+                  class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow flex items-center space-x-1"
+                >
+                  <Plus class="h-3.5 w-3.5" />
+                  <span>{$language === 'vi' ? 'Cộng vào tồn kho' : 'Add to Stock'}</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Quick fill buttons -->
+            <div class="space-y-1">
+              <span class="block text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                {$language === 'vi' ? 'Chọn nhanh số lượng nhập:' : 'Quick restock presets:'}
+              </span>
+              <div class="flex flex-wrap gap-1.5">
+                {#if stockFormData.stockQuantity <= stockFormData.reorderLevel}
+                  <button
+                    type="button"
+                    onclick={() => {
+                      const needed = Math.max(1, stockFormData.reorderLevel - stockFormData.stockQuantity);
+                      stockFormData.restockQuantity = needed;
+                      stockFormData.stockQuantity += needed;
+                      toast.success($language === 'vi' ? `Đã bù đủ ${needed} sản phẩm đạt mức an toàn!` : `Added ${needed} to meet safe threshold!`);
+                    }}
+                    class="px-2 py-1 rounded bg-amber-200 dark:bg-amber-900/80 hover:bg-amber-300 dark:hover:bg-amber-800 text-amber-900 dark:text-amber-200 text-[11px] font-bold transition flex items-center space-x-1"
+                  >
+                    <span>⚡ {$language === 'vi' ? `Bù đủ định mức (+${Math.max(1, stockFormData.reorderLevel - stockFormData.stockQuantity)})` : `Replenish Deficit (+${Math.max(1, stockFormData.reorderLevel - stockFormData.stockQuantity)})`}</span>
+                  </button>
+                {/if}
+                <button
+                  type="button"
+                  onclick={() => { stockFormData.restockQuantity = 10; stockFormData.stockQuantity += 10; }}
+                  class="px-2 py-1 rounded bg-slate-200/80 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-medium transition"
+                >
+                  +10
+                </button>
+                <button
+                  type="button"
+                  onclick={() => { stockFormData.restockQuantity = 25; stockFormData.stockQuantity += 25; }}
+                  class="px-2 py-1 rounded bg-slate-200/80 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-medium transition"
+                >
+                  +25
+                </button>
+                <button
+                  type="button"
+                  onclick={() => { stockFormData.restockQuantity = 50; stockFormData.stockQuantity += 50; }}
+                  class="px-2 py-1 rounded bg-slate-200/80 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-medium transition"
+                >
+                  +50
+                </button>
+                <button
+                  type="button"
+                  onclick={() => { stockFormData.restockQuantity = 100; stockFormData.stockQuantity += 100; }}
+                  class="px-2 py-1 rounded bg-slate-200/80 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-[11px] font-medium transition"
+                >
+                  +100
+                </button>
+              </div>
+            </div>
+
+            <!-- Preview indicator -->
+            <div class="pt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300 flex items-center justify-between border-t border-slate-200/60 dark:border-slate-800/60">
+              <span>{$language === 'vi' ? 'Tổng số lượng sau khi nhập:' : 'Total stock after restock:'}</span>
+              <span class="font-bold {stockFormData.stockQuantity > stockFormData.reorderLevel ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}">
+                {stockFormData.stockQuantity} {$language === 'vi' ? 'thiết bị' : 'units'}
+                {#if stockFormData.stockQuantity > stockFormData.reorderLevel}
+                  (Đủ an toàn ✅)
+                {:else}
+                  (Vẫn dưới mức tối thiểu ⚠️)
+                {/if}
+              </span>
             </div>
           </div>
 

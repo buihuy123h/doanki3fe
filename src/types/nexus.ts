@@ -12,7 +12,104 @@ export const CONNECTION_TYPE_LETTER: Record<ConnectionType, 'D' | 'B' | 'T'> = {
   Landline: 'T',
 };
 
-export type OrderStatus = 'Pending' | 'Feasible' | 'Not Feasible' | 'Connection Provided';
+// Two-stage approval pipeline (2 tầng xét duyệt):
+//   1. Khách đăng ký (trang Register / quầy retail)            -> 'PendingRetail'
+//      Đơn được route về NHÂN VIÊN BÁN HÀNG của đúng chi nhánh
+//      (StoreID) mà khách đã chọn.
+//   2. Retail Staff kiểm tra hồ sơ (SCTT/CMND, địa chỉ, gói cước, đúng địa bàn)
+//        - Duyệt  -> 'Pending'        (đẩy sang hàng đợi Technical khảo sát)
+//        - Từ chối-> 'Not Approved'   (trả hồ sơ, kèm lý do)
+//   3. Field Engineer đo kiểm hạ tầng -> 'Feasible' / 'Not Feasible'
+//   4. Đấu nối thiết bị -> 'Connection Provided'
+//
+// NOTE: 'Pending' is deliberately reused for "retail đã duyệt, chờ technical"
+// because the DB check constraint CK_Orders_Status only whitelists
+// ('Pending','Feasible','Not Feasible','Connection Provided'). 'PendingRetail'
+// and 'Not Approved' therefore exist FE-side only until the constraint is
+// widened (see docs/ORDER_APPROVAL_FLOW.md).
+export type OrderStatus =
+  | 'PendingRetail'
+  | 'Pending'
+  | 'Not Approved'
+  | 'Feasible'
+  | 'Not Feasible'
+  | 'Connection Provided';
+
+/** Statuses that still belong to the Retail (bán hàng) stage. */
+export const RETAIL_STAGE_STATUSES: readonly OrderStatus[] = [
+  'PendingRetail',
+  'Not Approved',
+];
+
+/** True while an order has not been cleared by the branch's retail staff yet. */
+export function isAwaitingRetailApproval(status: OrderStatus): boolean {
+  return status === 'PendingRetail';
+}
+
+/** True once the branch's retail staff approved it -> Technical may assess it. */
+export function isReleasedToTechnical(status: OrderStatus): boolean {
+  return (
+    status === 'Pending' ||
+    status === 'Feasible' ||
+    status === 'Not Feasible' ||
+    status === 'Connection Provided'
+  );
+}
+
+const ORDER_STATUS_LABEL: Record<OrderStatus, { vi: string; en: string }> = {
+  PendingRetail: { vi: 'Chờ bán hàng duyệt', en: 'Awaiting retail approval' },
+  Pending: { vi: 'Chờ kỹ thuật khảo sát', en: 'Awaiting feasibility survey' },
+  'Not Approved': { vi: 'Hồ sơ bị trả lại', en: 'Returned by retail' },
+  Feasible: { vi: 'Khảo sát khả thi', en: 'Feasible' },
+  'Not Feasible': { vi: 'Không khả thi', en: 'Not Feasible' },
+  'Connection Provided': { vi: 'Đã cấp kết nối', en: 'Connection Provided' },
+};
+
+/** Localised label for any order status; falls back to the raw value. */
+export function orderStatusLabel(status: OrderStatus, language: string): string {
+  const entry = ORDER_STATUS_LABEL[status];
+  if (!entry) return status;
+  return language === 'vi' ? entry.vi : entry.en;
+}
+
+/** Tailwind classes for the status pill: returns [chip, dot] colour pairs. */
+export function orderStatusTone(status: OrderStatus): {
+  chip: string;
+  dot: string;
+} {
+  switch (status) {
+    case 'Connection Provided':
+      return {
+        chip: 'bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700',
+        dot: 'bg-emerald-500 animate-pulse',
+      };
+    case 'Feasible':
+      return {
+        chip: 'bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-700',
+        dot: 'bg-sky-500',
+      };
+    case 'Not Feasible':
+      return {
+        chip: 'bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300 border border-rose-300 dark:border-rose-700',
+        dot: 'bg-rose-500',
+      };
+    case 'Not Approved':
+      return {
+        chip: 'bg-orange-100 dark:bg-orange-950 text-orange-800 dark:text-orange-300 border border-orange-300 dark:border-orange-700',
+        dot: 'bg-orange-500',
+      };
+    case 'PendingRetail':
+      return {
+        chip: 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700',
+        dot: 'bg-amber-500',
+      };
+    default:
+      return {
+        chip: 'bg-violet-100 dark:bg-violet-950 text-violet-800 dark:text-violet-300 border border-violet-300 dark:border-violet-700',
+        dot: 'bg-violet-500',
+      };
+  }
+}
 
 // Bulk / corporate scheme: discount on the advance (first rental) and the security
 // deposit, based on how many connections the order covers.
@@ -127,6 +224,18 @@ export interface Order {
   planName: string;
   retailOutletCode: string;
   retailEmployeeName: string;
+  // --- Two-stage approval: routing to a specific branch's retail staff ---
+  // The employee record (emp-xx) of the Retail Staff this order was routed to,
+  // resolved from the branch (retailOutletCode) the customer picked.
+  assignedEmployeeId?: string;
+  // Human-readable branch name for the routed retail staff (e.g. "Downtown Nexus Flagship Store").
+  assignedBranchName?: string;
+  // Set by the retail staff when they approve / reject the paperwork.
+  retailApprovedBy?: string;
+  retailApprovedAt?: string;
+  retailApprovalNotes?: string;
+  // Populated when the retail staff rejects the application.
+  retailRejectionReason?: string;
   createdAt: string;
   status: OrderStatus;
   feasibilityNotes?: string;
@@ -134,6 +243,10 @@ export interface Order {
   dpBoxCapacity?: string;
   signalLossDbm?: number;
   assignedAccountId?: string; // 16-char Account ID issued once the line is Feasible
+  assignedTechnician?: string; // Tên KTV được phân công khảo sát hạ tầng
+  assignedTechnicianId?: string; // Mã nhân viên KTV (ví dụ: "emp-03")
+  assignedTechnicianPhone?: string; // Số điện thoại liên hệ của KTV
+  assignedTechnicianDate?: string; // Thời điểm phân công khảo sát
 
   // Bulk / corporate scheme
   bulkConnectionsCount: number; // connections covered by this order (>= 1)

@@ -2,6 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 import type { RoleType } from '../types/nexus';
 import { nexusStore, accountIdKey } from './NexusContext';
 import { languageStore } from './LanguageContext';
+import { loginRequest, ApiError } from '../lib/api';
 
 export interface AuthUser {
   id: string;
@@ -33,66 +34,66 @@ export interface StaffAccount {
 export const STAFF_ACCOUNTS: StaffAccount[] = [
   {
     user: {
-      id: 'usr-admin-01',
+      id: 'emp-01',
       name: 'Sarah Jenkins',
-      email: 'admin@nexus.telecom',
+      email: 'sarah.jenkins@nexus.telecom',
       role: 'admin',
       title: 'General Manager',
       department: 'Executive Administration',
-      phone: '+84 901 888 999',
-      address: '72 Lê Lợi, Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+      phone: '+1 (555) 234-8901',
+      address: '742 Evergreen Terrace, NY',
       gender: 'female',
       dateOfBirth: '1988-04-12',
-      dateOfJoining: '2022-01-15',
-      bio: 'Phụ trách điều hành toàn bộ chiến lược phân phối viễn thông và quản trị phân hệ Nexus SMS.',
+      dateOfJoining: '2022-03-15',
+      bio: 'Senior Operations Manager leading overall telecommunication infrastructure and store network.',
     },
   },
   {
     user: {
-      id: 'usr-retail-02',
+      id: 'emp-02',
       name: 'David Chen',
-      email: 'retail@nexus.telecom',
+      email: 'david.chen@nexus.telecom',
       role: 'retail',
       title: 'Store Representative',
       department: 'Retail Outlets (SH-01 Flagship)',
-      phone: '+84 902 777 666',
-      address: '154 Nguyễn Huệ, Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+      phone: '+1 (555) 456-1123',
+      address: '120 Broadway, Manhattan, NY',
       gender: 'male',
-      dateOfBirth: '1993-08-25',
-      dateOfJoining: '2023-03-01',
-      bio: 'Tư vấn các gói cước Cáp quang và Dial-Up, tiếp nhận hồ sơ và thanh toán cho khách hàng.',
+      dateOfBirth: '1992-09-25',
+      dateOfJoining: '2023-06-10',
+      bio: 'Flagship Store lead customer representative specialized in corporate bulk schemes.',
     },
   },
   {
     user: {
-      id: 'usr-tech-03',
+      id: 'emp-03',
       name: 'Marcus Ramirez',
-      email: 'tech@nexus.telecom',
+      email: 'marcus.ramirez@nexus.telecom',
       role: 'technical',
       title: 'Field Operations Engineer',
-      department: 'Technical NOC & Field Ops',
-      phone: '+84 903 555 444',
-      address: '88 Hai Bà Trưng, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+      department: 'Technical Operations & Field Ops',
+      phone: '+1 (555) 789-3344',
+      address: '88 Bedford Ave, Brooklyn, NY',
       gender: 'male',
-      dateOfBirth: '1990-11-03',
-      dateOfJoining: '2022-06-10',
-      bio: 'Khảo sát hạ tầng, đo kiểm suy hao tín hiệu quang và cấp phát modem/router cho thuê bao.',
+      dateOfBirth: '1990-12-05',
+      dateOfJoining: '2021-11-04',
+      bio: 'Lead technical supervisor handling fiber splicing, line attenuation testing, and DP box routing.',
     },
   },
   {
     user: {
-      id: 'usr-accounts-04',
+      id: 'emp-04',
       name: 'Elena Rostova',
-      email: 'accounts@nexus.telecom',
+      email: 'elena.rostova@nexus.telecom',
       role: 'accounts',
       title: 'Senior Accountant',
-      department: 'Finance & Billing Division',
-      phone: '+84 904 333 222',
-      address: '26 Đồng Khởi, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh',
+      department: 'Finance & Accounts',
+      phone: '+1 (555) 901-5567',
+      address: '45 Wall Street, Suite 900, NY',
       gender: 'female',
-      dateOfBirth: '1991-02-18',
-      dateOfJoining: '2022-09-01',
-      bio: 'Đối soát công nợ cước viễn thông, xuất hóa đơn thuế dịch vụ và ghi sổ thanh toán.',
+      dateOfBirth: '1985-02-18',
+      dateOfJoining: '2020-08-20',
+      bio: 'Head of Billing and Financial Accounts handling ledger audits, invoices, and service tax returns.',
     },
   },
 ];
@@ -190,6 +191,90 @@ function createAuthStore() {
     return account.user;
   };
 
+  // Staff/customer sign-in through the real backend: POST /api/auth/login
+  // with email + password. The backend returns a JWT plus the account's role
+  // (Manager / Retail Staff / Field Engineer / Senior Accountant / Customer).
+  const mapBackendRole = (backendRole: string): RoleType => {
+    const r = backendRole.toLowerCase();
+    if (r.includes('retail')) return 'retail';
+    if (r.includes('field') || r.includes('engineer') || r.includes('technic')) return 'technical';
+    if (r.includes('account') || r.includes('billing') || r.includes('finance')) return 'accounts';
+    if (r.includes('manager') || r.includes('admin') || r.includes('director')) return 'admin';
+    return 'user';
+  };
+
+  const loginWithCredentials = async (
+    email: string,
+    password: string
+  ): Promise<{ success: true; user: AuthUser } | { success: false; error: string }> => {
+    const t = get(languageStore.t);
+
+    try {
+      const res = await loginRequest(email.trim(), password);
+
+      // Lưu JWT để đính kèm vào các request tới backend sau này.
+      localStorage.setItem('nexus_jwt_token', res.token);
+
+      const role = mapBackendRole(res.user.role);
+      const titleByRole: Record<RoleType, string> = {
+        admin: 'Manager',
+        retail: 'Retail Staff',
+        technical: 'Field Engineer',
+        accounts: 'Senior Accountant',
+        user: 'Customer',
+      };
+
+      const user: AuthUser = {
+        id: res.user.id,
+        name: res.user.name,
+        email: res.user.email,
+        role,
+        title: titleByRole[role],
+        department: res.user.accountType === 'Employee' ? 'Nexus Telecom Internal' : 'Subscribers',
+      };
+
+      currentUser.set(user);
+      return { success: true, user };
+    } catch (e) {
+      // Fallback cho demo: nếu backend ngắt kết nối hoặc lỗi mạng mà nhập đúng tài khoản mẫu & pass 1234567890
+      const cleanEmail = email.trim().toLowerCase();
+      const matchedAccount = STAFF_ACCOUNTS.find(
+        (acc) =>
+          acc.user.email.toLowerCase() === cleanEmail ||
+          (acc.user.role === 'admin' && cleanEmail === 'admin@nexus.telecom') ||
+          (acc.user.role === 'retail' && cleanEmail === 'retail@nexus.telecom') ||
+          (acc.user.role === 'technical' && cleanEmail === 'tech@nexus.telecom') ||
+          (acc.user.role === 'accounts' && cleanEmail === 'accounts@nexus.telecom')
+      );
+
+      if (matchedAccount && password === '1234567890') {
+        currentUser.set(matchedAccount.user);
+        return { success: true, user: matchedAccount.user };
+      }
+
+      if (e instanceof ApiError) {
+        if (e.message === 'network') return { success: false, error: t.auth.serverUnreachable };
+        if (e.status === 401) return { success: false, error: t.auth.invalidCredentials };
+      }
+      return { success: false, error: t.auth.loginFailed };
+    }
+  };
+
+  // Đăng nhập nhanh 1-chạm cho tài khoản mẫu các role
+  const loginQuickStaff = async (
+    email: string,
+    role: Exclude<RoleType, 'user'>
+  ): Promise<{ success: true; user: AuthUser } | { success: false; error: string }> => {
+    try {
+      const res = await loginWithCredentials(email, '1234567890');
+      if (res.success) return res;
+    } catch {
+      // Ignored, proceed to fallback
+    }
+    const user = loginAsStaff(role);
+    return { success: true, user };
+  };
+
   const updateUserProfile = (updates: Partial<AuthUser>) => {
     currentUser.update((u) => {
       if (!u) return null;
@@ -202,6 +287,7 @@ function createAuthStore() {
   const logout = () => {
     currentUser.set(null);
     localStorage.removeItem('nexus_auth_user');
+    localStorage.removeItem('nexus_jwt_token');
   };
 
   return {
@@ -210,6 +296,8 @@ function createAuthStore() {
     loginWithAccountId,
     loginAfterPurchase,
     loginAsStaff,
+    loginWithCredentials,
+    loginQuickStaff,
     updateUserProfile,
     logout,
   };

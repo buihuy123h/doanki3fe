@@ -31,13 +31,17 @@
     ArrowRight,
     ExternalLink,
     FileText,
+    ShieldCheck,
+    Wrench,
   } from "lucide-svelte";
   import type {
     Order,
+    Connection,
     ConnectionStatus,
     Equipment,
     OrderStatus,
   } from "../types/nexus";
+  import { isReleasedToTechnical } from "../types/nexus";
   import { toast } from "svelte-sonner";
   import SettingsView from "../components/common/SettingsView.svelte";
   import ProfileView from "../components/common/ProfileView.svelte";
@@ -225,6 +229,14 @@
         ? { landline: landlineLegDone(order), internet: legFor(order).internet }
         : undefined,
     );
+    if (!updated) {
+      toast.error(
+        $language === "vi"
+          ? "Từ chối: đơn chưa được bán hàng chi nhánh duyệt hồ sơ."
+          : "Blocked: the branch's retail staff has not approved this order yet.",
+      );
+      return;
+    }
     toast.success(
       updated?.assignedAccountId
         ? `Order ${order.id} marked as FEASIBLE. Account ID issued: ${updated.assignedAccountId}`
@@ -241,11 +253,19 @@
     e.preventDefault();
     if (!targetOrderForRejection) return;
 
-    updateOrderStatus(
+    const rejected = updateOrderStatus(
       targetOrderForRejection.id,
       "Not Feasible",
       rejectionReason,
     );
+    if (!rejected) {
+      toast.error(
+        $language === "vi"
+          ? "Từ chối: đơn chưa được bán hàng chi nhánh duyệt hồ sơ."
+          : "Blocked: the branch's retail staff has not approved this order yet.",
+      );
+      return;
+    }
     toast.error(`Order ${targetOrderForRejection.id} flagged as NOT FEASIBLE.`);
     isNotFeasibleModalOpen = false;
     targetOrderForRejection = null;
@@ -374,27 +394,40 @@
   };
 
   // ACTION HANDLER: REGISTER NEW EQUIPMENT
-  const handleSaveEquipment = (e: SubmitEvent) => {
+  let isSavingEquipment = $state(false);
+  const handleSaveEquipment = async (e: SubmitEvent) => {
     e.preventDefault();
     if (!newEquipmentForm.serialNumber || !newEquipmentForm.macAddress) {
-      toast.error("Serial number and MAC address are required.");
+      toast.error(
+        $language === "vi"
+          ? "Vui lòng nhập số Serial và địa chỉ MAC."
+          : "Serial number and MAC address are required."
+      );
       return;
     }
 
-    addEquipment({ ...newEquipmentForm });
-
-    toast.success(
-      `Equipment ${newEquipmentForm.serialNumber} registered in stock.`,
-    );
-    isAddEquipmentModalOpen = false;
-    newEquipmentForm = {
-      serialNumber: "",
-      macAddress: "",
-      deviceModel: "Nexus Wi-Fi 6 AX3000 Dual-Band Router",
-      deviceType: "Gigabit Router",
-      firmwareVersion: "v3.4.1-BUILD-88",
-      status: "In Stock",
-    };
+    isSavingEquipment = true;
+    try {
+      await addEquipment({ ...newEquipmentForm });
+      toast.success(
+        $language === "vi"
+          ? `Thiết bị ${newEquipmentForm.serialNumber} đã được lưu vào CSDL thành công!`
+          : `Equipment ${newEquipmentForm.serialNumber} saved to database successfully!`
+      );
+      isAddEquipmentModalOpen = false;
+      newEquipmentForm = {
+        serialNumber: "",
+        macAddress: "",
+        deviceModel: "Nexus Wi-Fi 6 AX3000 Dual-Band Router",
+        deviceType: "Gigabit Router",
+        firmwareVersion: "v3.4.1-BUILD-88",
+        status: "In Stock",
+      };
+    } catch (err: any) {
+      toast.error(err.message || ($language === "vi" ? "Lỗi khi lưu thiết bị vào CSDL." : "Error saving equipment."));
+    } finally {
+      isSavingEquipment = false;
+    }
   };
 
   const openAddEquipmentModal = () => {
@@ -452,8 +485,12 @@
     }
   };
 
+  // STAGE 3 queue: only applications the branch retail desk already cleared may be
+  // surveyed here. 'PendingRetail' / 'Not Approved' stay invisible to Technical,
+  // which enforces the two-stage rule (Khách -> Bán hàng chi nhánh -> Kỹ thuật).
   const filteredOrders = $derived(
     $orders.filter((o) => {
+      if (!isReleasedToTechnical(o.status)) return false;
       const matchesStatus =
         queueStatusFilter === "All" || o.status === queueStatusFilter;
       const matchesSearch =
@@ -505,6 +542,23 @@
   <!-- TAB 1: ORDER FEASIBILITY QUEUE -->
   {#if activeTab === "feasibility-queue"}
     <div class="tab-content-animate space-y-4">
+      <!-- Two-stage rule notice -->
+      <div class="flex items-start gap-2.5 p-3.5 rounded-xl bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-900/50">
+        <ShieldCheck class="h-4 w-4 text-sky-600 dark:text-sky-400 shrink-0 mt-0.5" />
+        <p class="text-[11px] text-sky-900 dark:text-sky-200 leading-relaxed">
+          {$language === "vi"
+            ? "Hàng đợi này chỉ chứa đơn đã được nhân viên bán hàng của chi nhánh duyệt hồ sơ. Đơn mới đăng ký (chờ bán hàng duyệt) không hiển thị ở đây."
+            : "This queue only lists applications already cleared by the branch's retail staff. Newly submitted orders (awaiting retail approval) never appear here."}
+          {#if $orders.filter((o) => o.status === "PendingRetail").length > 0}
+            <span class="block mt-1 font-semibold text-amber-700 dark:text-amber-400">
+              {$language === "vi"
+                ? `Hiện có ${$orders.filter((o) => o.status === "PendingRetail").length} hồ sơ đang chờ bán hàng chi nhánh duyệt.`
+                : `${$orders.filter((o) => o.status === "PendingRetail").length} application(s) still waiting on branch retail approval.`}
+            </span>
+          {/if}
+        </p>
+      </div>
+
       <!-- Filter Bar -->
       <div
         class="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm"
@@ -637,6 +691,12 @@
                     <div class="text-[11px] text-slate-500 dark:text-slate-400">
                       {order.customerPhone}
                     </div>
+                    {#if order.assignedTechnician}
+                      <div class="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 font-mono">
+                        <Wrench class="h-3 w-3" />
+                        <span>{$language === "vi" ? "KTV:" : "Tech:"} {order.assignedTechnician}</span>
+                      </div>
+                    {/if}
                   </td>
                   <td class="px-4 py-3">
                     <div class="flex items-center gap-1.5 flex-wrap">
@@ -721,6 +781,13 @@
                               : "Đã cấp kết nối"
                         : order.status}
                     </span>
+
+                    {#if order.retailApprovedBy}
+                      <div class="text-[10px] text-emerald-700 dark:text-emerald-400 mt-1">
+                        {$language === "vi" ? "Bán hàng duyệt:" : "Retail approved:"} {order.retailApprovedBy}
+                        {#if order.retailOutletCode}· {order.retailOutletCode}{/if}
+                      </div>
+                    {/if}
 
                     {#if totalReq > 1}
                       <div class="mt-2 min-w-[120px]">
