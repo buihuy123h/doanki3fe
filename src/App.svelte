@@ -10,6 +10,7 @@
   import TechnicalDashboard from './pages/TechnicalDashboard.svelte';
   import AccountsDashboard from './pages/AccountsDashboard.svelte';
   import UserDashboard from './pages/UserDashboard.svelte';
+  import AdminApiTest from './pages/AdminApiTest.svelte';
   import { authStore } from './context/AuthContext';
   import { languageStore } from './context/LanguageContext';
   import { navigateTo, dashboardPathForRole, navigate } from './lib/router';
@@ -60,6 +61,8 @@
       pageName = isVi ? 'Cổng Thuê Bao Tự Phục Vụ' : 'Subscriber Portal';
     } else if (r === '/profile' || r === '/ho-so') {
       pageName = isVi ? 'Hồ Sơ Cá Nhân' : 'User Profile';
+    } else if (r === '/api-test' || r === '/admin/test') {
+      pageName = 'Admin API Test Bench';
     } else {
       pageName = isVi ? 'Hệ Thống Viễn Thông' : 'Service System';
     }
@@ -112,6 +115,8 @@
       {:else}
         <LoginPage />
       {/if}
+    {:else if $route === '/api-test' || $route === '/admin/test'}
+      <AdminApiTest />
     {:else}
       <!-- Fallback to Root -->
       <IndexPage />

@@ -19,6 +19,13 @@ import {
   type ConnectionType,
   type RoleType,
 } from '../types/nexus';
+import {
+  planService,
+  employeeService,
+  retailShopService,
+  vendorService,
+  inventoryService,
+} from '../api';
 
 export { getBulkDiscountPercent };
 
@@ -47,867 +54,7 @@ export function accountIdKey(raw: string): string {
   return (raw || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
-// ============ INITIAL MOCK DATA (identical to React version) ============
-
-// Security deposit by connection type (spec): Dial-Up 325 / Broadband 500 / Landline 250
-const DEPOSIT = { 'Dial-Up': 325, Broadband: 500, Landline: 250 } as const;
-
-// Tariff catalogue transcribed from the spec's Financial pricing tables.
-const INITIAL_PLANS: Plan[] = [
-  // ---- Dial-Up ----
-  {
-    id: 'plan-du-h10',
-    name: 'Dial-Up Hourly 10 Hrs',
-    type: 'Dial-Up',
-    speedOrBandwidth: '56 Kbps V.92',
-    monthlyRental: 50,
-    securityDeposit: DEPOSIT['Dial-Up'],
-    dataLimit: '10 Hours',
-    status: 'Active',
-    billingCycle: 'Hourly Pack',
-    validity: '1 Month',
-    includedHours: 10,
-    description: 'Prepaid 10-hour dial-up pack, valid for one month.',
-  },
-  {
-    id: 'plan-du-h30',
-    name: 'Dial-Up Hourly 30 Hrs',
-    type: 'Dial-Up',
-    speedOrBandwidth: '56 Kbps V.92',
-    monthlyRental: 130,
-    securityDeposit: DEPOSIT['Dial-Up'],
-    dataLimit: '30 Hours',
-    status: 'Active',
-    billingCycle: 'Hourly Pack',
-    validity: '3 Months',
-    includedHours: 30,
-    description: 'Prepaid 30-hour dial-up pack, valid for three months.',
-  },
-  {
-    id: 'plan-du-h60',
-    name: 'Dial-Up Hourly 60 Hrs',
-    type: 'Dial-Up',
-    speedOrBandwidth: '56 Kbps V.92',
-    monthlyRental: 260,
-    securityDeposit: DEPOSIT['Dial-Up'],
-    dataLimit: '60 Hours',
-    status: 'Active',
-    billingCycle: 'Hourly Pack',
-    validity: '6 Months',
-    includedHours: 60,
-    description: 'Prepaid 60-hour dial-up pack, valid for six months.',
-  },
-  {
-    id: 'plan-du-28',
-    name: 'Dial-Up Unlimited 28 Kbps',
-    type: 'Dial-Up',
-    speedOrBandwidth: '28 Kbps',
-    monthlyRental: 75,
-    securityDeposit: DEPOSIT['Dial-Up'],
-    dataLimit: 'Unlimited',
-    status: 'Active',
-    billingCycle: 'Monthly',
-    validity: '1 Month',
-    description: 'Unlimited dial-up access at 28 Kbps. Quarterly billing also available at $150.',
-  },
-  {
-    id: 'plan-du-56',
-    name: 'Dial-Up Unlimited 56 Kbps',
-    type: 'Dial-Up',
-    speedOrBandwidth: '56 Kbps',
-    monthlyRental: 100,
-    securityDeposit: DEPOSIT['Dial-Up'],
-    dataLimit: 'Unlimited',
-    status: 'Active',
-    billingCycle: 'Monthly',
-    validity: '1 Month',
-    description: 'Unlimited dial-up access at 56 Kbps. Quarterly billing also available at $180.',
-  },
-  // ---- Broadband ----
-  {
-    id: 'plan-bb-h30',
-    name: 'Broadband Hourly 30 Hrs',
-    type: 'Broadband',
-    speedOrBandwidth: 'Broadband',
-    monthlyRental: 175,
-    securityDeposit: DEPOSIT.Broadband,
-    dataLimit: '30 Hours',
-    status: 'Active',
-    billingCycle: 'Hourly Pack',
-    validity: '1 Month',
-    includedHours: 30,
-    description: 'Prepaid 30-hour broadband pack, valid for one month.',
-  },
-  {
-    id: 'plan-bb-h60',
-    name: 'Broadband Hourly 60 Hrs',
-    type: 'Broadband',
-    speedOrBandwidth: 'Broadband',
-    monthlyRental: 315,
-    securityDeposit: DEPOSIT.Broadband,
-    dataLimit: '60 Hours',
-    status: 'Active',
-    billingCycle: 'Hourly Pack',
-    validity: '6 Months',
-    includedHours: 60,
-    description: 'Prepaid 60-hour broadband pack, valid for six months.',
-  },
-  {
-    id: 'plan-bb-64',
-    name: 'Broadband Unlimited 64 Kbps',
-    type: 'Broadband',
-    speedOrBandwidth: '64 Kbps',
-    monthlyRental: 225,
-    securityDeposit: DEPOSIT.Broadband,
-    dataLimit: 'Unlimited',
-    status: 'Active',
-    billingCycle: 'Monthly',
-    validity: '1 Month',
-    description: 'Unlimited broadband at 64 Kbps. Quarterly billing also available at $400.',
-  },
-  {
-    id: 'plan-bb-128',
-    name: 'Broadband Unlimited 128 Kbps',
-    type: 'Broadband',
-    speedOrBandwidth: '128 Kbps',
-    monthlyRental: 350,
-    securityDeposit: DEPOSIT.Broadband,
-    dataLimit: 'Unlimited',
-    status: 'Active',
-    billingCycle: 'Monthly',
-    validity: '1 Month',
-    description: 'Unlimited broadband at 128 Kbps. Quarterly billing also available at $445.',
-  },
-  // ---- Landline (telephone only) ----
-  {
-    id: 'plan-ll-local-y',
-    name: 'Landline Local - Unlimited (Yearly)',
-    type: 'Landline',
-    speedOrBandwidth: 'PSTN Voice',
-    monthlyRental: 75,
-    securityDeposit: DEPOSIT.Landline,
-    dataLimit: 'Unlimited Local',
-    status: 'Active',
-    billingCycle: 'Yearly',
-    validity: '1 Year',
-    callRates: 'Local: 55¢/min',
-    description: 'Local plan, yearly rental. Call charges billed on top of the rental.',
-  },
-  {
-    id: 'plan-ll-local-m',
-    name: 'Landline Local - Monthly',
-    type: 'Landline',
-    speedOrBandwidth: 'PSTN Voice',
-    monthlyRental: 35,
-    securityDeposit: DEPOSIT.Landline,
-    dataLimit: 'Local Calling',
-    status: 'Active',
-    billingCycle: 'Monthly',
-    validity: '1 Month',
-    callRates: 'Local: 75¢/min',
-    description: 'Local plan, monthly rental. Call charges billed on top of the rental.',
-  },
-  {
-    id: 'plan-ll-std-m',
-    name: 'Landline STD - Monthly',
-    type: 'Landline',
-    speedOrBandwidth: 'PSTN Voice',
-    monthlyRental: 125,
-    securityDeposit: DEPOSIT.Landline,
-    dataLimit: 'Local + STD',
-    status: 'Active',
-    billingCycle: 'Monthly',
-    validity: '1 Month',
-    callRates: 'Local: 70¢/min · STD: $2.25/min · SMS to mobile: $1.00/min',
-    description: 'STD plan, monthly rental with local, STD and mobile-messaging call charges.',
-  },
-  {
-    id: 'plan-ll-std-h',
-    name: 'Landline STD - Half-Yearly',
-    type: 'Landline',
-    speedOrBandwidth: 'PSTN Voice',
-    monthlyRental: 420,
-    securityDeposit: DEPOSIT.Landline,
-    dataLimit: 'Local + STD',
-    status: 'Active',
-    billingCycle: 'Half-Yearly',
-    validity: '6 Months',
-    callRates: 'Local: 60¢/min · STD: $2.00/min · SMS to mobile: $1.15/min',
-    description: 'STD plan, half-yearly rental with reduced call charges.',
-  },
-  {
-    id: 'plan-ll-std-y',
-    name: 'Landline STD - Yearly',
-    type: 'Landline',
-    speedOrBandwidth: 'PSTN Voice',
-    monthlyRental: 780,
-    securityDeposit: DEPOSIT.Landline,
-    dataLimit: 'Local + STD',
-    status: 'Active',
-    billingCycle: 'Yearly',
-    validity: '1 Year',
-    callRates: 'Local: 60¢/min · STD: $1.75/min · SMS to mobile: $1.25/min',
-    description: 'STD plan, yearly rental with the lowest call charges.',
-  },
-];
-
-const INITIAL_EMPLOYEES: Employee[] = [
-  {
-    id: 'emp-01',
-    employeeCode: 'EMP-1001',
-    name: 'Sarah Jenkins',
-    email: 'sarah.jenkins@nexus.telecom',
-    phone: '+1 (555) 234-8901',
-    role: 'Manager',
-    department: 'Administration',
-    status: 'Active',
-    dateOfJoining: '2022-03-15',
-  },
-  {
-    id: 'emp-02',
-    employeeCode: 'EMP-1042',
-    name: 'David Chen',
-    email: 'david.chen@nexus.telecom',
-    phone: '+1 (555) 456-1123',
-    role: 'Retail Staff',
-    department: 'Retail Outlets',
-    retailShopAssigned: 'Downtown Flagship (SH-01)',
-    status: 'Active',
-    dateOfJoining: '2023-06-10',
-  },
-  {
-    id: 'emp-03',
-    employeeCode: 'EMP-1077',
-    name: 'Marcus Ramirez',
-    email: 'marcus.ramirez@nexus.telecom',
-    phone: '+1 (555) 789-3344',
-    role: 'Field Engineer',
-    department: 'Technical Operations',
-    status: 'Active',
-    dateOfJoining: '2021-11-04',
-  },
-  {
-    id: 'emp-04',
-    employeeCode: 'EMP-1090',
-    name: 'Elena Rostova',
-    email: 'elena.rostova@nexus.telecom',
-    phone: '+1 (555) 901-5567',
-    role: 'Senior Accountant',
-    department: 'Finance & Accounts',
-    status: 'Active',
-    dateOfJoining: '2020-08-20',
-  },
-  {
-    id: 'emp-05',
-    employeeCode: 'EMP-1105',
-    name: 'Aiden Brooks',
-    email: 'aiden.brooks@nexus.telecom',
-    phone: '+1 (555) 345-6789',
-    role: 'Retail Staff',
-    department: 'Retail Outlets',
-    retailShopAssigned: 'Metro Uptown Hub (SH-02)',
-    status: 'Active',
-    dateOfJoining: '2024-01-15',
-  },
-];
-
-const INITIAL_VENDORS: Vendor[] = [
-  {
-    id: 'vnd-01',
-    vendorCode: 'VND-401',
-    companyName: 'Corning Optical Systems Ltd',
-    contactPerson: 'Gregory Vance',
-    category: 'Fiber Optics & Cabling',
-    phone: '+1 (800) 522-6789',
-    email: 'sales@corning-telecom.com',
-    address: '800 Corning Way, Hickory, NC',
-    rating: 5,
-    status: 'Active',
-  },
-  {
-    id: 'vnd-02',
-    vendorCode: 'VND-402',
-    companyName: 'Cisco Systems Commercial Hardware',
-    contactPerson: 'Linda Morrison',
-    category: 'Modems & Routers',
-    phone: '+1 (800) 553-6387',
-    email: 'enterprise-hw@cisco.com',
-    address: '170 West Tasman Dr, San Jose, CA',
-    rating: 5,
-    status: 'Active',
-  },
-  {
-    id: 'vnd-03',
-    vendorCode: 'VND-403',
-    companyName: 'Zyxel Communications Corp',
-    contactPerson: 'Kenji Sato',
-    category: 'Modems & Routers',
-    phone: '+1 (714) 632-0882',
-    email: 'support-b2b@zyxel.com',
-    address: '1130 North Miller St, Anaheim, CA',
-    rating: 4,
-    status: 'Active',
-  },
-  {
-    id: 'vnd-04',
-    vendorCode: 'VND-404',
-    companyName: 'Amphenol Telecom Assemblies',
-    contactPerson: 'Rachel Ward',
-    category: 'Telecom Switches',
-    phone: '+1 (203) 265-8900',
-    email: 'supply@amphenol-rf.com',
-    address: '358 Hall Avenue, Wallingford, CT',
-    rating: 4,
-    status: 'Active',
-  },
-];
-
-// 3-digit numeric code assigned to each city within the territory (used in Account IDs).
-export const CITY_CODES: Record<string, string> = {
-  'New York': '064',
-  Queens: '072',
-  Brooklyn: '081',
-  Manhattan: '064',
-};
-
-export function cityCodeFor(city: string): string {
-  return CITY_CODES[city] ?? '999';
-}
-
-const INITIAL_RETAIL_SHOPS: RetailShop[] = [
-  {
-    id: 'sh-01',
-    shopCode: 'SH-01',
-    name: 'Downtown Nexus Flagship Store',
-    city: 'New York',
-    cityCode: '064',
-    address: '452 Broadway, Manhattan, NY 10013',
-    managerName: 'David Chen',
-    phone: '+1 (212) 555-0144',
-    operatingHours: 'Mon-Sat: 08:30 - 20:00, Sun: 10:00 - 18:00',
-    activeEmployeesCount: 6,
-    totalSubscribersServed: 1420,
-  },
-  {
-    id: 'sh-02',
-    shopCode: 'SH-02',
-    name: 'Metro Uptown Tech Hub',
-    city: 'New York',
-    cityCode: '064',
-    address: '2190 Broadway, Upper West Side, NY 10024',
-    managerName: 'Aiden Brooks',
-    phone: '+1 (212) 555-0189',
-    operatingHours: 'Mon-Sat: 09:00 - 19:30',
-    activeEmployeesCount: 4,
-    totalSubscribersServed: 980,
-  },
-  {
-    id: 'sh-03',
-    shopCode: 'SH-03',
-    name: 'Queens Central Service Center',
-    city: 'Queens',
-    cityCode: '072',
-    address: '70-20 Austin St, Forest Hills, NY 11375',
-    managerName: 'Kavita Patel',
-    phone: '+1 (718) 555-0199',
-    operatingHours: 'Mon-Fri: 09:00 - 18:00, Sat: 09:00 - 15:00',
-    activeEmployeesCount: 3,
-    totalSubscribersServed: 750,
-  },
-  {
-    id: 'sh-04',
-    shopCode: 'SH-04',
-    name: 'Brooklyn Nexus Connect Depot',
-    city: 'Brooklyn',
-    cityCode: '081',
-    address: '320 Atlantic Ave, Boerum Hill, NY 11201',
-    managerName: 'Robert Gomez',
-    phone: '+1 (718) 555-0210',
-    operatingHours: 'Mon-Sat: 09:00 - 19:00',
-    activeEmployeesCount: 5,
-    totalSubscribersServed: 1120,
-  },
-];
-
-const INITIAL_INVENTORY: InventoryItem[] = [
-  {
-    id: 'inv-01',
-    itemCode: 'EQ-ONT-FBR',
-    name: 'Huawei EchoLife HG8245H5 GPON ONT',
-    category: 'Fiber ONT',
-    stockQuantity: 145,
-    reorderLevel: 25,
-    unitCost: 55.0,
-    location: 'Central Depot Bay 4A',
-    supplier: 'Cisco Systems Commercial Hardware',
-  },
-  {
-    id: 'inv-02',
-    itemCode: 'EQ-RTR-AX',
-    name: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
-    category: 'Router',
-    stockQuantity: 88,
-    reorderLevel: 20,
-    unitCost: 65.0,
-    location: 'Central Depot Bay 2B',
-    supplier: 'Zyxel Communications Corp',
-  },
-  {
-    id: 'inv-03',
-    itemCode: 'EQ-MDM-V92',
-    name: 'USRobotics 56K V.92 Faxmodem USB/PSTN',
-    category: 'Modem',
-    stockQuantity: 18,
-    reorderLevel: 10,
-    unitCost: 32.0,
-    location: 'Central Depot Bay 7C',
-    supplier: 'Amphenol Telecom Assemblies',
-  },
-  {
-    id: 'inv-04',
-    itemCode: 'EQ-ATA-VOIP',
-    name: 'Grandstream HT802 2-Port Analog VoIP Adapter',
-    category: 'VoIP Adapter',
-    stockQuantity: 42,
-    reorderLevel: 15,
-    unitCost: 28.0,
-    location: 'Central Depot Bay 3C',
-    supplier: 'Amphenol Telecom Assemblies',
-  },
-  {
-    id: 'inv-05',
-    itemCode: 'EQ-SPL-1X8',
-    name: 'Corning 1x8 PLC Optical Fiber Splitter',
-    category: 'Splitter',
-    stockQuantity: 9, // Low stock indicator
-    reorderLevel: 15,
-    unitCost: 14.5,
-    location: 'Central Depot Bay 1A',
-    supplier: 'Corning Optical Systems Ltd',
-  },
-];
-
-const INITIAL_ORDERS: Order[] = [
-  {
-    id: 'D0000000001',
-    customerName: 'Arthur Pendelton',
-    customerPhone: '+1 (555) 902-1844',
-    customerEmail: 'arthur.p@classiccorp.net',
-    installationAddress: '144 West 82nd St, Apt 4B, New York, NY 10024',
-    idProofType: 'National ID Card',
-    idProofNumber: 'ID-US-9918231',
-    connectionType: 'Dial-Up',
-    planId: 'plan-du-56',
-    planName: 'Dial-Up Unlimited 56 Kbps',
-    retailOutletCode: 'SH-02',
-    retailEmployeeName: 'David Chen',
-    createdAt: '2026-09-04 10:30',
-    status: 'Pending',
-    cableDistanceMeters: 420,
-    dpBoxCapacity: 'Port 6 Available / DP-B12',
-    signalLossDbm: -18.5,
-    bulkConnectionsCount: 1,
-    bulkDiscountPercent: 0,
-    // New Dial-Up customer with no Nexus landline yet: both legs need a check.
-  },
-  {
-    id: 'B0000000002',
-    customerName: 'Samantha Vance',
-    customerPhone: '+1 (555) 301-4477',
-    customerEmail: 'samantha.vance@gmail.com',
-    installationAddress: '78 Mercer St, Soho, New York, NY 10012',
-    idProofType: 'Passport',
-    idProofNumber: 'P-98827419',
-    connectionType: 'Broadband',
-    planId: 'plan-bb-128',
-    planName: 'Broadband Unlimited 128 Kbps',
-    retailOutletCode: 'SH-01',
-    retailEmployeeName: 'David Chen',
-    createdAt: '2026-09-04 14:15',
-    status: 'Feasible',
-    assignedAccountId: 'B064-000000000005',
-    feasibilityNotes: 'Fiber termination box available within 85m. Signal strength -16.2 dBm (Excellent). Line tested OK.',
-    cableDistanceMeters: 85,
-    dpBoxCapacity: 'Port 2 Available / DP-S04',
-    signalLossDbm: -16.2,
-    bulkConnectionsCount: 1,
-    bulkDiscountPercent: 0,
-    internetFeasible: true,
-  },
-  {
-    id: 'T0000000003',
-    customerName: 'Highline Consulting LLC',
-    customerPhone: '+1 (555) 777-8899',
-    customerEmail: 'office@highlineconsulting.com',
-    installationAddress: '55 Hudson Yards, Fl 18, New York, NY 10001',
-    idProofType: "Driver's License",
-    idProofNumber: 'DL-NY-2940192',
-    connectionType: 'Landline',
-    planId: 'plan-ll-std-m',
-    planName: 'Landline STD - Monthly',
-    retailOutletCode: 'SH-01',
-    retailEmployeeName: 'David Chen',
-    createdAt: '2026-09-02 09:00',
-    status: 'Connection Provided',
-    assignedAccountId: 'T064-000000000001',
-    feasibilityNotes: 'Copper loop line deployed. Line tested and audio quality verified.',
-    cableDistanceMeters: 120,
-    dpBoxCapacity: 'Port 8 Dedicated',
-    signalLossDbm: -15.1,
-    bulkConnectionsCount: 50, // corporate order — 50 lines => 75% scheme discount
-    bulkDiscountPercent: 75,
-    landlineFeasible: true,
-  },
-  {
-    id: 'B0000000004',
-    customerName: 'Robert Lewandowski',
-    customerPhone: '+1 (555) 621-9988',
-    customerEmail: 'robert.lewan@yahoo.com',
-    installationAddress: '89-12 Far Rockaway Blvd, Queens, NY 11693',
-    idProofType: 'National ID Card',
-    idProofNumber: 'ID-US-8827391',
-    connectionType: 'Broadband',
-    planId: 'plan-bb-64',
-    planName: 'Broadband Unlimited 64 Kbps',
-    retailOutletCode: 'SH-03',
-    retailEmployeeName: 'Aiden Brooks',
-    createdAt: '2026-09-03 11:45',
-    status: 'Not Feasible',
-    feasibilityNotes: 'Distance to nearest fiber distribution box exceeds 1,150 meters. Severe optical attenuation (-34 dBm). Requires main trunk extension.',
-    cableDistanceMeters: 1150,
-    dpBoxCapacity: 'No Spare Ports',
-    signalLossDbm: -34.0,
-    bulkConnectionsCount: 1,
-    bulkDiscountPercent: 0,
-    internetFeasible: false,
-  },
-  {
-    id: 'B0000000008',
-    customerName: 'Công ty Cổ phần AlphaTech',
-    customerPhone: '+84 912 345 678',
-    customerEmail: 'contact@alphatech.vn',
-    installationAddress: 'Tòa nhà Keangnam, Cầu Giấy, Hà Nội',
-    idProofType: 'National ID Card',
-    idProofNumber: 'ID-VN-010999888777',
-    connectionType: 'Broadband',
-    planId: 'plan-bb-64',
-    planName: 'Broadband Unlimited 64 Kbps',
-    retailOutletCode: 'SH-01',
-    retailEmployeeName: 'David Chen',
-    createdAt: '2026-09-14 10:00',
-    status: 'Feasible',
-    assignedAccountId: 'B064-000000000010',
-    feasibilityNotes: 'Fiber termination box within 80m. Signal strength -15.0 dBm OK. Ready for multi-connection provisioning.',
-    cableDistanceMeters: 80,
-    dpBoxCapacity: 'Port 1 Available / DP-A01',
-    signalLossDbm: -15.0,
-    bulkConnectionsCount: 3,
-    bulkDiscountPercent: 0,
-    internetFeasible: true,
-  },
-];
-
-const INITIAL_CONNECTIONS: Connection[] = [
-  {
-    accountId: 'T064-000000000001',
-    orderId: 'T0000000003',
-    customerName: 'Highline Consulting LLC',
-    customerPhone: '+1 (555) 777-8899',
-    customerEmail: 'office@highlineconsulting.com',
-    installationAddress: '55 Hudson Yards, Fl 18, New York, NY 10001',
-    connectionType: 'Landline',
-    planName: 'Landline STD - Monthly',
-    monthlyRental: 125,
-    securityDeposit: 250,
-    status: 'Active',
-    ipAddress: '198.51.100.42',
-    portNumber: 'VOIP-ETH-1',
-    assignedDeviceSerial: 'NX-ATA-881920',
-    assignedDeviceModel: 'Grandstream HT802 2-Port Analog VoIP Adapter',
-    installedDate: '2026-09-02',
-    lastUpdated: '2026-09-02 16:30',
-  },
-  {
-    accountId: 'T064-000000000008',
-    orderId: 'T0000000003',
-    customerName: 'Highline Consulting LLC',
-    customerPhone: '+1 (555) 777-8899',
-    customerEmail: 'office@highlineconsulting.com',
-    installationAddress: '55 Hudson Yards, Fl 18, New York, NY 10001',
-    connectionType: 'Landline',
-    planName: 'Landline STD - Monthly',
-    monthlyRental: 125,
-    securityDeposit: 250,
-    status: 'Active',
-    ipAddress: '198.51.100.43',
-    portNumber: 'VOIP-ETH-2',
-    assignedDeviceSerial: 'NX-HW-992813',
-    assignedDeviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
-    installedDate: '2026-09-02',
-    lastUpdated: '2026-09-02 16:30',
-  },
-  {
-    accountId: 'B064-000000000002',
-    orderId: 'B0000000005',
-    customerName: 'Victoria Sterling',
-    customerPhone: '+1 (555) 441-2099',
-    customerEmail: 'v.sterling@apexlegal.org',
-    installationAddress: '120 E 64th St, Manhattan, NY 10065',
-    connectionType: 'Broadband',
-    planName: 'Broadband Unlimited 64 Kbps',
-    monthlyRental: 225,
-    securityDeposit: 500,
-    status: 'Active',
-    ipAddress: '203.0.113.88',
-    portNumber: 'GPON-0/1/4',
-    assignedDeviceSerial: 'NX-HW-992810',
-    assignedDeviceModel: 'Huawei EchoLife HG8245H5 GPON ONT',
-    installedDate: '2026-08-15',
-    lastUpdated: '2026-08-15 11:20',
-  },
-  {
-    accountId: 'D064-000000000003',
-    orderId: 'D0000000006',
-    customerName: 'Retro Arcade Lounge LLC',
-    customerPhone: '+1 (555) 332-9011',
-    customerEmail: 'manager@retroarcadeny.com',
-    installationAddress: '31 St Marks pl, East Village, NY 10003',
-    connectionType: 'Dial-Up',
-    planName: 'Dial-Up Unlimited 56 Kbps',
-    monthlyRental: 100,
-    securityDeposit: 325,
-    status: 'Temporarily Inactive',
-    ipAddress: '192.0.2.14',
-    portNumber: 'PSTN-LINE-4',
-    assignedDeviceSerial: 'NX-MD-110294',
-    assignedDeviceModel: 'USRobotics 56K V.92 Faxmodem USB/PSTN',
-    installedDate: '2026-07-10',
-    lastUpdated: '2026-09-01 09:15',
-    lastStatusReason: 'Customer requested seasonal suspension during venue renovation.',
-  },
-  {
-    accountId: 'B081-000000000004',
-    orderId: 'B0000000007',
-    customerName: 'Jonathan Meyer',
-    customerPhone: '+1 (555) 881-2300',
-    customerEmail: 'j.meyer@brooklynloft.io',
-    installationAddress: '175 Water St, Dumbo, Brooklyn, NY 11201',
-    connectionType: 'Broadband',
-    planName: 'Broadband Unlimited 64 Kbps',
-    monthlyRental: 225,
-    securityDeposit: 500,
-    status: 'Permanently Inactive',
-    assignedDeviceSerial: 'NX-HW-992811',
-    assignedDeviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
-    installedDate: '2026-05-18',
-    lastUpdated: '2026-08-30 17:00',
-    lastStatusReason: 'Tenant relocated outside coverage zone; equipment returned and de-provisioned.',
-  },
-];
-
-const INITIAL_EQUIPMENTS: Equipment[] = [
-  {
-    id: 'eq-01',
-    serialNumber: 'NX-HW-992810',
-    macAddress: 'BC:A9:93:21:44:8E',
-    deviceModel: 'Huawei EchoLife HG8245H5 GPON ONT',
-    deviceType: 'Fiber ONT Modem',
-    assignedAccountId: 'B064-000000000002',
-    assignedCustomerName: 'Victoria Sterling',
-    firmwareVersion: 'V500R019C20SPC120',
-    status: 'In Service',
-    assignedTechnician: 'Marcus Ramirez',
-    installedDate: '2026-08-15',
-  },
-  {
-    id: 'eq-02',
-    serialNumber: 'NX-ATA-881920',
-    macAddress: '00:0B:82:76:D4:11',
-    deviceModel: 'Grandstream HT802 2-Port Analog VoIP Adapter',
-    deviceType: 'Analog Telephone Adapter',
-    assignedAccountId: 'T064-000000000001',
-    assignedCustomerName: 'Highline Consulting LLC',
-    firmwareVersion: '1.0.35.3',
-    status: 'In Service',
-    assignedTechnician: 'Marcus Ramirez',
-    installedDate: '2026-09-02',
-  },
-  {
-    id: 'eq-03',
-    serialNumber: 'NX-MD-110294',
-    macAddress: 'F8:E4:FB:99:A2:03',
-    deviceModel: 'USRobotics 56K V.92 Faxmodem USB/PSTN',
-    deviceType: 'VDSL2/ADSL Modem',
-    assignedAccountId: 'D064-000000000003',
-    assignedCustomerName: 'Retro Arcade Lounge LLC',
-    firmwareVersion: 'v2.1.8-PSTN',
-    status: 'In Service',
-    assignedTechnician: 'Marcus Ramirez',
-    installedDate: '2026-07-10',
-  },
-  {
-    id: 'eq-04',
-    serialNumber: 'NX-HW-992811',
-    macAddress: '00:1A:2B:3C:4D:5E',
-    deviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
-    deviceType: 'Gigabit Router',
-    firmwareVersion: 'v3.2.4-BUILD-921',
-    status: 'In Stock',
-  },
-  {
-    id: 'eq-05',
-    serialNumber: 'NX-HW-992812',
-    macAddress: '54:AF:97:88:B1:00',
-    deviceModel: 'Huawei EchoLife HG8245H5 GPON ONT',
-    deviceType: 'Fiber ONT Modem',
-    firmwareVersion: 'V500R019C20SPC120',
-    status: 'In Stock',
-  },
-  {
-    id: 'eq-06',
-    serialNumber: 'NX-HW-992813',
-    macAddress: 'A0:B1:C2:D3:E4:F5',
-    deviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
-    deviceType: 'Gigabit Router',
-    firmwareVersion: 'v3.2.4-BUILD-921',
-    status: 'In Service',
-    assignedAccountId: 'T064-000000000008',
-    assignedCustomerName: 'Highline Consulting LLC',
-    assignedTechnician: 'Marcus Ramirez',
-    installedDate: '2026-09-02',
-  },
-  {
-    id: 'eq-07',
-    serialNumber: 'NX-HW-992814',
-    macAddress: '12:34:56:78:9A:BC',
-    deviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
-    deviceType: 'Gigabit Router',
-    firmwareVersion: 'v3.2.4-BUILD-921',
-    status: 'In Stock',
-  },
-  {
-    id: 'eq-08',
-    serialNumber: 'NX-HW-992815',
-    macAddress: '23:45:67:89:AB:CD',
-    deviceModel: 'Huawei EchoLife HG8245H5 GPON ONT',
-    deviceType: 'Fiber ONT Modem',
-    firmwareVersion: 'V500R019C20SPC120',
-    status: 'In Stock',
-  },
-  {
-    id: 'eq-09',
-    serialNumber: 'NX-HW-992816',
-    macAddress: '34:56:78:9A:BC:DE',
-    deviceModel: 'Grandstream HT802 2-Port Analog VoIP Adapter',
-    deviceType: 'Analog Telephone Adapter',
-    firmwareVersion: '1.0.35.3',
-    status: 'In Stock',
-  },
-  {
-    id: 'eq-10',
-    serialNumber: 'NX-HW-992817',
-    macAddress: '45:67:89:AB:CD:EF',
-    deviceModel: 'Nexus Wi-Fi 6 AX3000 Dual-Band Router',
-    deviceType: 'Gigabit Router',
-    firmwareVersion: 'v3.2.4-BUILD-921',
-    status: 'In Stock',
-  },
-];
-
-const INITIAL_BILLS: Bill[] = [
-  {
-    id: 'bill-01',
-    invoiceNumber: 'NEX-INV-2026-001',
-    accountId: 'B064-000000000002',
-    customerName: 'Victoria Sterling',
-    billingMonth: 'August 2026',
-    billingDate: '2026-08-15',
-    dueDate: '2026-09-05',
-    planName: 'Broadband Unlimited 64 Kbps',
-    connectionType: 'Broadband',
-    securityDeposit: 500,
-    monthlyRental: 225,
-    hourlyCharges: 0,
-    discountPercent: 0,
-    discountAmount: 0,
-    subtotal: 725, // 500 + 225 - 0
-    serviceTaxRate: 12.24,
-    serviceTaxAmount: 88.74, // 725 * 0.1224
-    totalAmount: 813.74, // 725 + 88.74
-    amountPaid: 813.74,
-    dueAmount: 0,
-    status: 'Paid',
-    paymentHistory: [
-      {
-        paymentId: 'PAY-89201',
-        paymentDate: '2026-08-20',
-        amountPaid: 813.74,
-        paymentMode: 'Credit/Debit Card',
-        referenceNumber: 'TXN-VISA-994821',
-        recordedBy: 'Elena Rostova',
-      },
-    ],
-  },
-  {
-    id: 'bill-02',
-    invoiceNumber: 'NEX-INV-2026-002',
-    accountId: 'T064-000000000001',
-    customerName: 'Highline Consulting LLC',
-    billingMonth: 'September 2026',
-    billingDate: '2026-09-02',
-    dueDate: '2026-09-22',
-    planName: 'Landline STD - Monthly',
-    connectionType: 'Landline',
-    securityDeposit: 250,
-    monthlyRental: 125,
-    hourlyCharges: 0,
-    discountPercent: 25, // 12-line corporate order
-    discountAmount: 93.75, // 25% of (250 + 125)
-    subtotal: 281.25, // 250 + 125 - 93.75
-    serviceTaxRate: 12.24,
-    serviceTaxAmount: 34.43, // 281.25 * 0.1224
-    totalAmount: 315.68, // 281.25 + 34.43
-    amountPaid: 100,
-    dueAmount: 215.68,
-    status: 'Partially Paid',
-    paymentHistory: [
-      {
-        paymentId: 'PAY-89205',
-        paymentDate: '2026-09-03',
-        amountPaid: 100,
-        paymentMode: 'Bank Transfer/NEFT',
-        referenceNumber: 'ACH-CITI-449102',
-        recordedBy: 'Elena Rostova',
-      },
-    ],
-  },
-];
-
-const INITIAL_FEEDBACKS: Feedback[] = [
-  {
-    id: 'fb-01',
-    accountId: 'B064-000000000002',
-    orderId: 'B0000000005',
-    customerName: 'Victoria Sterling',
-    rating: 5,
-    category: 'Installation',
-    message: 'Field engineer arrived on time and the fibre line was live within an hour. Very smooth.',
-    createdAt: '2026-08-16 09:12',
-    response: 'Thank you for the kind words — we have shared this with the SH-01 install team.',
-    respondedBy: 'Sarah Jenkins',
-    respondedAt: '2026-08-16 15:40',
-  },
-  {
-    id: 'fb-02',
-    accountId: 'D064-000000000003',
-    orderId: 'D0000000006',
-    customerName: 'Retro Arcade Lounge LLC',
-    rating: 4,
-    category: 'Billing',
-    message: 'Deposit structure explained well during corporate sign up.',
-    createdAt: '2026-09-01 11:05',
-  },
-];
+// Mock data removed. State is hydrated directly from Backend API.
 
 const INITIAL_SETTINGS: SystemSettings = {
   serviceTaxRate: 12.24, // As explicitly specified: Service Tax (12.24%)
@@ -927,10 +74,10 @@ function loadFromStorage<T>(key: string, fallback: T): T {
     const saved = localStorage.getItem(key);
     if (!saved) return fallback;
     const sanitized = saved
-      .replace(/â€“/g, '-')
+      .replace(/Ã¢â‚¬â€œ/g, '-')
+      .replace(/Ã¢â‚¬â€/g, '-')
       .replace(/â€”/g, '-')
-      .replace(/—/g, '-')
-      .replace(/–/g, '-');
+      .replace(/â€“/g, '-');
     return JSON.parse(sanitized);
   } catch {
     return fallback;
@@ -946,8 +93,15 @@ function persist(key: string) {
 // ============ STORE CREATION ============
 
 function createNexusStore() {
-  // Bumped when the seed schema changes so stale localStorage is not reloaded.
-  const V = '_v3';
+  // Version tag: bumped to clear any obsolete mock data stored in localStorage
+  const V = '_v4_clean';
+  if (typeof window !== 'undefined') {
+    // Clear obsolete mock caches
+    ['nexus_plans_v3', 'nexus_employees_v3', 'nexus_vendors_v3', 'nexus_retailShops_v3', 
+     'nexus_inventory_v3', 'nexus_orders_v3', 'nexus_connections_v3', 'nexus_equipments_v3', 
+     'nexus_bills_v3', 'nexus_feedbacks_v3'].forEach(k => localStorage.removeItem(k));
+  }
+
   const currentRole = writable<RoleType>('admin');
   const dbConnected = writable<boolean>(false);
   const dbInfo = writable<{
@@ -960,19 +114,20 @@ function createNexusStore() {
   } | null>(null);
   const isSyncing = writable<boolean>(false);
 
-  const plans = writable<Plan[]>(loadFromStorage('nexus_plans' + V, INITIAL_PLANS));
-  const employees = writable<Employee[]>(loadFromStorage('nexus_employees' + V, INITIAL_EMPLOYEES));
-  const vendors = writable<Vendor[]>(loadFromStorage('nexus_vendors' + V, INITIAL_VENDORS));
-  const retailShops = writable<RetailShop[]>(loadFromStorage('nexus_retailShops' + V, INITIAL_RETAIL_SHOPS));
-  const inventory = writable<InventoryItem[]>(loadFromStorage('nexus_inventory' + V, INITIAL_INVENTORY));
-  const orders = writable<Order[]>(loadFromStorage('nexus_orders' + V, INITIAL_ORDERS));
-  const connections = writable<Connection[]>(loadFromStorage('nexus_connections' + V, INITIAL_CONNECTIONS));
-  const equipments = writable<Equipment[]>(loadFromStorage('nexus_equipments' + V, INITIAL_EQUIPMENTS));
-  const bills = writable<Bill[]>(loadFromStorage('nexus_bills' + V, INITIAL_BILLS));
-  const feedbacks = writable<Feedback[]>(loadFromStorage('nexus_feedbacks' + V, INITIAL_FEEDBACKS));
+  // Clean empty state ready for real API data
+  const plans = writable<Plan[]>(loadFromStorage('nexus_plans' + V, []));
+  const employees = writable<Employee[]>(loadFromStorage('nexus_employees' + V, []));
+  const vendors = writable<Vendor[]>(loadFromStorage('nexus_vendors' + V, []));
+  const retailShops = writable<RetailShop[]>(loadFromStorage('nexus_retailShops' + V, []));
+  const inventory = writable<InventoryItem[]>(loadFromStorage('nexus_inventory' + V, []));
+  const orders = writable<Order[]>(loadFromStorage('nexus_orders' + V, []));
+  const connections = writable<Connection[]>(loadFromStorage('nexus_connections' + V, []));
+  const equipments = writable<Equipment[]>(loadFromStorage('nexus_equipments' + V, []));
+  const bills = writable<Bill[]>(loadFromStorage('nexus_bills' + V, []));
+  const feedbacks = writable<Feedback[]>(loadFromStorage('nexus_feedbacks' + V, []));
   const settings = writable<SystemSettings>(loadFromStorage('nexus_settings' + V, INITIAL_SETTINGS));
 
-  // Auto-persist to localStorage on every change (mirrors React useEffect persistence)
+  // Auto-persist to localStorage on every change
   plans.subscribe(persist('nexus_plans' + V));
   employees.subscribe(persist('nexus_employees' + V));
   vendors.subscribe(persist('nexus_vendors' + V));
@@ -1138,7 +293,7 @@ function createNexusStore() {
       prev.map((ord) => {
         if (ord.id === orderId) {
           // The 16-char Account ID is issued the moment technical confirms the
-          // line is feasible — it is the customer's only sign-in credential.
+          // line is feasible â€” it is the customer's only sign-in credential.
           const assignedAccountId =
             status === 'Feasible' && !ord.assignedAccountId
               ? generateAccountId(ord.connectionType, cityCodeForOrder(ord), nextAccountIdSerial())
@@ -1384,7 +539,7 @@ function createNexusStore() {
       })
     );
 
-    // SPEC: "Chỉ postpaid: bill được sinh ra, và trạng thái kết nối phụ thuộc vào bill"
+    // SPEC: "Chá»‰ postpaid: bill Ä‘Æ°á»£c sinh ra, vÃ  tráº¡ng thÃ¡i káº¿t ná»‘i phá»¥ thuá»™c vÃ o bill"
     // When bill is settled in full, automatically restore any Temporarily Inactive connection to Active.
     if (updatedBill && (updatedBill as Bill).status === 'Paid') {
       const targetAcc = (updatedBill as Bill).accountId;
@@ -1397,7 +552,7 @@ function createNexusStore() {
                 ...conn,
                 status: 'Active' as ConnectionStatus,
                 lastUpdated: stamp,
-                lastStatusReason: `Công nợ hóa đơn ${(updatedBill as Bill).invoiceNumber} đã được thanh toán toàn bộ — Tự động kích hoạt lại đường truyền`,
+                lastStatusReason: `CÃ´ng ná»£ hÃ³a Ä‘Æ¡n ${(updatedBill as Bill).invoiceNumber} Ä‘Ã£ Ä‘Æ°á»£c thanh toÃ¡n toÃ n bá»™ â€” Tá»± Ä‘á»™ng kÃ­ch hoáº¡t láº¡i Ä‘Æ°á»ng truyá»n`,
               }
             : conn
         )
@@ -1435,10 +590,63 @@ function createNexusStore() {
     );
   };
 
-  // ---- SQL Server Database Sync ----
+  // ---- ASP.NET Core Web API & SQL Server Sync ----
   const syncWithDatabase = async (): Promise<boolean> => {
     isSyncing.set(true);
     try {
+      // 1. Thá»­ gá»i trá»±c tiáº¿p cÃ¡c REST API cá»§a ASP.NET Core
+      try {
+        const [apiPlans, apiEmployees, apiShops, apiVendors, apiInventory] = await Promise.allSettled([
+          planService.getPlans(),
+          employeeService.getEmployees(),
+          retailShopService.getRetailShops(),
+          vendorService.getVendors(),
+          inventoryService.getInventory(),
+        ]);
+
+        let hasApiData = false;
+
+        if (apiPlans.status === 'fulfilled' && Array.isArray(apiPlans.value) && apiPlans.value.length > 0) {
+          plans.set(apiPlans.value);
+          hasApiData = true;
+        }
+        if (apiEmployees.status === 'fulfilled' && Array.isArray(apiEmployees.value) && apiEmployees.value.length > 0) {
+          employees.set(apiEmployees.value);
+          hasApiData = true;
+        }
+        if (apiShops.status === 'fulfilled' && Array.isArray(apiShops.value) && apiShops.value.length > 0) {
+          retailShops.set(apiShops.value);
+          hasApiData = true;
+        }
+        if (apiVendors.status === 'fulfilled' && Array.isArray(apiVendors.value) && apiVendors.value.length > 0) {
+          vendors.set(apiVendors.value);
+          hasApiData = true;
+        }
+        if (apiInventory.status === 'fulfilled' && Array.isArray(apiInventory.value) && apiInventory.value.length > 0) {
+          inventory.set(apiInventory.value);
+          hasApiData = true;
+        }
+
+        if (hasApiData) {
+          dbConnected.set(true);
+          const currentPlans = get(plans);
+          const currentOrders = get(orders);
+          dbInfo.set({
+            status: 'Connected',
+            server: 'ASP.NET Core Web API (http://localhost:5105)',
+            database: 'NexusSystem',
+            tableCount: 14,
+            planCount: currentPlans.length,
+            orderCount: currentOrders ? currentOrders.length : 0,
+          });
+          console.log('[Nexus] Successfully connected to ASP.NET Core API at http://localhost:5105');
+          return true;
+        }
+      } catch (apiErr) {
+        console.warn('[Nexus] ASP.NET Core API not reachable, trying SQL bridge fallback:', apiErr);
+      }
+
+      // 2. Fallback sang Vite SQL Server bridge middleware (/api/nexus/all)
       const res = await fetch('/api/nexus/all');
       if (res.ok) {
         const data = await res.json();
@@ -1469,7 +677,7 @@ function createNexusStore() {
         }
       }
     } catch (err) {
-      console.warn('[Nexus] Could not reach SQL Server bridge, using local storage state:', err);
+      console.warn('[Nexus] Could not reach backend API or SQL Server bridge, using local storage state:', err);
     } finally {
       isSyncing.set(false);
     }

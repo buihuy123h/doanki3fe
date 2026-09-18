@@ -8,14 +8,15 @@
   import type { NavItem } from '../components/layout/DashboardLayout.svelte';
   import {
     Users, Store, Truck, Layers, Package, Plus, Search, Edit2, Trash2,
-    TrendingUp, CheckCircle2, Phone, MapPin, Wifi, Radio, X, Settings, MessageSquare,
+    TrendingUp, CheckCircle2, Phone, MapPin, Wifi, Radio, X, Settings, MessageSquare, Database,
   } from 'lucide-svelte';
   import type { Employee, Vendor, Plan, RetailShop, InventoryItem } from '../types/nexus';
   import { toast } from 'svelte-sonner';
   import { queryParam, activeTabOverride } from '../lib/router';
   import { getPlanName, getPlanDescription, getPlanSpeedOrBandwidth, getPlanBillingCycle } from '../lib/planI18n';
+  import AdminApiTest from './AdminApiTest.svelte';
 
-  type AdminTab = 'overview' | 'employees' | 'stock' | 'vendors' | 'shops' | 'plans' | 'feedback' | 'settings' | 'profile';
+  type AdminTab = 'overview' | 'employees' | 'stock' | 'vendors' | 'shops' | 'plans' | 'feedback' | 'settings' | 'profile' | 'api-test';
 
   const {
     employees, addEmployee, updateEmployee, deleteEmployee,
@@ -33,7 +34,7 @@
   // Reactively respond to tab overrides from router / notifications
   $effect(() => {
     const override = $activeTabOverride;
-    const validTabs: AdminTab[] = ['overview', 'employees', 'stock', 'vendors', 'shops', 'plans', 'feedback', 'settings', 'profile'];
+    const validTabs: AdminTab[] = ['overview', 'employees', 'stock', 'vendors', 'shops', 'plans', 'feedback', 'settings', 'profile', 'api-test'];
     if (override && override.path === '/admin') {
       if (validTabs.includes(override.tab as AdminTab)) {
         activeTab = override.tab as AdminTab;
@@ -454,6 +455,7 @@
       badgeColor: 'bg-amber-100 text-amber-800',
     },
     { id: 'settings', label: $t.adminNav.settings, icon: Settings },
+    { id: 'api-test', label: 'API Test Bench', icon: Database, badge: 'REST' },
   ]);
 </script>
 
@@ -1185,6 +1187,11 @@
   <!-- TAB: PROFILE -->
   {#if activeTab === 'profile'}
     <ProfileView />
+  {/if}
+
+  <!-- TAB: API TEST BENCH -->
+  {#if activeTab === 'api-test'}
+    <AdminApiTest />
   {/if}
 
   <!-- Employee Modal -->
