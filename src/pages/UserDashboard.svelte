@@ -11,14 +11,14 @@
     User, Activity, Settings, CreditCard, LayoutDashboard, Store, MapPin, KeyRound,
     MessageSquare, Star, Wallet, Bell, Clock, Calendar, CheckCircle2, AlertCircle,
     ShieldCheck, QrCode, Smartphone, Banknote, ArrowRight, X, ChevronRight, Copy,
-    Download, Sparkles, Building, RefreshCw, Filter
+    Download, Sparkles, Building, RefreshCw, Filter, ShoppingBag, Wifi, Radio, Phone, Plus, Check
   } from 'lucide-svelte';
-  import type { FeedbackCategory, Bill, PaymentRecord } from '../types/nexus';
+  import type { FeedbackCategory, Bill, PaymentRecord, Plan, Order, ConnectionType } from '../types/nexus';
   import { toast } from 'svelte-sonner';
   import { queryParam, activeTabOverride } from '../lib/router';
 
   const { currentUser } = authStore;
-  const { connections, orders, bills, retailShops, feedbacks, addFeedback, recordPayment } = nexusStore;
+  const { connections, orders, bills, retailShops, feedbacks, addFeedback, recordPayment, plans, placeOrder } = nexusStore;
   const { t, language } = languageStore;
 
   let activeTab = $state('overview');
@@ -26,7 +26,7 @@
   // Reactively respond to tab overrides from router / notifications
   $effect(() => {
     const override = $activeTabOverride;
-    const validTabs = ['overview', 'billing', 'pay-balance', 'feedback', 'settings', 'profile'];
+    const validTabs = ['overview', 'new-service', 'billing', 'pay-balance', 'feedback', 'settings', 'profile'];
     if (override && override.path === '/user') {
       if (validTabs.includes(override.tab)) {
         activeTab = override.tab;
@@ -38,6 +38,71 @@
       }
     }
   });
+
+  // New service order state
+  let newOrderCategory = $state<'all' | ConnectionType>('all');
+  let orderingPlan = $state<Plan | null>(null);
+  let newOrderCustomerName = $state('');
+  let newOrderCustomerEmail = $state('');
+  let newOrderAddress = $state('');
+  let newOrderPhone = $state('');
+  let newOrderShopCode = $state('SH-01');
+  let newOrderIdProofType = $state<Order['idProofType']>('National ID Card');
+  let newOrderIdProofNumber = $state('');
+  let newOrderBulkCount = $state(1);
+  let newOrderHasLandline = $state(false);
+  let newOrderPlacedReceipt = $state<Order | null>(null);
+
+  const availableNewPlans = $derived(
+    $plans.filter((p) => p.status === 'Active' && (newOrderCategory === 'all' || p.type === newOrderCategory))
+  );
+
+  function handleOpenOrderModal(p: Plan) {
+    orderingPlan = p;
+    newOrderCustomerName = $currentUser?.name || connection?.customerName || '';
+    newOrderCustomerEmail = $currentUser?.email || connection?.customerEmail || '';
+    newOrderAddress = connection?.installationAddress || '';
+    newOrderPhone = connection?.customerPhone || '';
+    newOrderIdProofNumber = order?.idProofNumber || '';
+    newOrderShopCode = shop?.shopCode || $retailShops[0]?.shopCode || 'SH-01';
+    newOrderBulkCount = 1;
+    newOrderHasLandline = false;
+  }
+
+  function handleConfirmNewServiceOrder(e: SubmitEvent) {
+    e.preventDefault();
+    if (!orderingPlan) return;
+    if (!newOrderCustomerName.trim() || !newOrderAddress.trim() || !newOrderPhone.trim() || !newOrderIdProofNumber.trim()) {
+      toast.error($language === 'vi' ? 'Vui lòng điền đủ họ tên, địa chỉ lắp đặt, SĐT và số giấy tờ.' : 'Please fill all name, address, phone, and ID proof fields.');
+      return;
+    }
+
+    const created = placeOrder({
+      customerName: newOrderCustomerName.trim(),
+      customerPhone: newOrderPhone.trim(),
+      customerEmail: newOrderCustomerEmail.trim() || $currentUser?.email || connection?.customerEmail || 'customer@nexus.telecom',
+      installationAddress: newOrderAddress.trim(),
+      idProofType: newOrderIdProofType,
+      idProofNumber: newOrderIdProofNumber.trim(),
+      connectionType: orderingPlan.type,
+      planId: orderingPlan.id,
+      planName: orderingPlan.name,
+      retailOutletCode: newOrderShopCode,
+      retailEmployeeName: 'Customer Self-Service',
+      bulkConnectionsCount: Math.max(1, newOrderBulkCount || 1),
+      ...(orderingPlan.type === 'Dial-Up' && newOrderHasLandline && accountId.startsWith('T')
+        ? { existingLandlineAccountId: accountId }
+        : {}),
+    });
+
+    newOrderPlacedReceipt = created;
+    orderingPlan = null;
+    toast.success(
+      $language === 'vi'
+        ? `Đã tạo đơn hàng #${created.id} thành công! Kỹ thuật viên sẽ sớm khảo sát đường truyền.`
+        : `Order #${created.id} created! Field engineers will survey the line soon.`
+    );
+  }
 
   // Feedback form (functional requirement #2)
   let fbRating = $state(5);
@@ -216,7 +281,9 @@
       return map[connection.status] ?? map['Active'];
     }
     const map: Record<string, { vi: string; en: string; tone: string }> = {
-      'Pending': { vi: '● Chờ khảo sát khả thi', en: '● Awaiting feasibility survey', tone: 'text-amber-500' },
+      'PendingRetail': { vi: '● Chi nhánh đang kiểm tra hồ sơ của bạn', en: '● Your branch is reviewing your paperwork', tone: 'text-amber-500' },
+      'Not Approved': { vi: '● Hồ sơ cần bổ sung — vui lòng liên hệ chi nhánh', en: '● Paperwork returned — please contact your branch', tone: 'text-orange-500' },
+      'Pending': { vi: '● Hồ sơ đã duyệt, kỹ thuật đang khảo sát khả thi', en: '● Approved — engineers surveying feasibility', tone: 'text-violet-500' },
       'Feasible': { vi: '● Khả thi, chờ lắp đặt', en: '● Feasible, awaiting installation', tone: 'text-sky-500' },
       'Not Feasible': { vi: '● Chưa thể triển khai tại địa chỉ này', en: '● Not feasible at this address', tone: 'text-rose-500' },
       'Connection Provided': { vi: '● Đã cấp kết nối', en: '● Connection provided', tone: 'text-emerald-500' },
@@ -226,6 +293,7 @@
 
   const navItems: NavItem[] = $derived([
     { id: 'overview', label: $t.userNav.overview, icon: LayoutDashboard },
+    { id: 'new-service', label: $language === 'vi' ? 'Đăng ký gói mới' : 'Order New Service', icon: ShoppingBag },
     { id: 'billing', label: $t.userNav.billing, icon: CreditCard },
     { id: 'pay-balance', label: $language === 'vi' ? 'Thanh toán' : 'Pay Balance', icon: Wallet },
     { id: 'feedback', label: $language === 'vi' ? 'Phản hồi' : 'Feedback', icon: MessageSquare, badge: myFeedbacks.length || undefined },
@@ -1285,6 +1353,294 @@
           </p>
         {/if}
       </div>
+    </div>
+  {:else if activeTab === 'new-service'}
+    <div class="space-y-6">
+      <!-- Header Banner -->
+      <div class="p-6 rounded-2xl bg-gradient-to-r from-sky-500/15 via-blue-500/10 to-indigo-500/15 border border-[#CCE4F7] dark:border-[#253D56] flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center space-x-2 text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider">
+            <Sparkles class="h-4 w-4" />
+            <span>{$language === 'vi' ? 'Dịch vụ viễn thông Nexus' : 'Nexus Telecom Services'}</span>
+          </div>
+          <h2 class="text-xl font-black text-[#0F1D2B] dark:text-white mt-1">
+            {$language === 'vi' ? 'Đăng ký thêm gói cước & đường truyền mới' : 'Order New Telecom Connection'}
+          </h2>
+          <p class="text-xs text-[#537292] dark:text-[#8DB0D4] mt-1 max-w-xl">
+            {$language === 'vi'
+              ? 'Chọn gói cước phù hợp. Đơn hàng của bạn sẽ được gửi thẳng tới bộ phận Kỹ thuật chi nhánh để đo kiểm và triển khai lắp đặt.'
+              : 'Choose the right plan. Your order will be immediately dispatched to the branch Technical team for line survey.'}
+          </p>
+        </div>
+        <div class="flex items-center gap-2">
+          {#each [['all', $language === 'vi' ? 'Tất cả' : 'All'], ['Broadband', 'Broadband'], ['Dial-Up', 'Dial-Up'], ['Landline', 'Landline']] as [cat, label] (cat)}
+            <button
+              type="button"
+              onclick={() => (newOrderCategory = cat as any)}
+              class="px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer {newOrderCategory === cat
+                ? 'bg-sky-600 text-white shadow-xs'
+                : 'bg-white/80 dark:bg-[#152434] text-[#305070] dark:text-slate-300 border border-[#CCE4F7] dark:border-[#253D56] hover:bg-sky-50 dark:hover:bg-slate-800'}"
+            >
+              {label}
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <!-- Placed Receipt Notification if any -->
+      {#if newOrderPlacedReceipt}
+        <div class="p-5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+          <div class="flex items-start space-x-3">
+            <div class="h-10 w-10 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <CheckCircle2 class="h-6 w-6" />
+            </div>
+            <div>
+              <div class="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">
+                {$language === 'vi' ? 'Đơn hàng mới đã được khởi tạo thành công!' : 'Order Placed Successfully!'}
+              </div>
+              <div class="text-base font-extrabold text-[#0F1D2B] dark:text-white mt-0.5">
+                {$language === 'vi' ? 'Mã đơn hàng:' : 'Order ID:'} <span class="font-mono text-sky-600 dark:text-sky-400">{newOrderPlacedReceipt.id}</span>
+                <span class="text-xs font-medium text-slate-500 ml-2">({newOrderPlacedReceipt.planName})</span>
+              </div>
+              <p class="text-xs text-emerald-800 dark:text-emerald-300/90 mt-1">
+                {$language === 'vi'
+                  ? 'Trạng thái: Đang chờ Kỹ thuật viên chi nhánh đo kiểm hạ tầng (Feasibility Survey). Bạn có thể theo dõi tiến độ bằng mã đơn này.'
+                  : 'Status: Awaiting branch Technical feasibility survey. You can track status with this Order ID.'}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onclick={() => copyToClipboard(newOrderPlacedReceipt!.id, 'Mã đơn hàng')}
+            class="shrink-0 px-4 py-2 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition flex items-center space-x-1.5 shadow-xs cursor-pointer"
+          >
+            <Copy class="h-4 w-4" />
+            <span>{$language === 'vi' ? 'Sao chép mã đơn' : 'Copy Order ID'}</span>
+          </button>
+        </div>
+      {/if}
+
+      <!-- Plans Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        {#each availableNewPlans as p (p.id)}
+          <div class="p-6 rounded-2xl bg-white dark:bg-[#152434] border border-[#CCE4F7] dark:border-[#253D56] shadow-sm hover:shadow-md transition-all flex flex-col justify-between group">
+            <div>
+              <div class="flex items-center justify-between mb-3">
+                <span class="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-bold {p.type === 'Broadband' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300' : p.type === 'Dial-Up' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'}">
+                  {#if p.type === 'Broadband'}
+                    <Wifi class="h-3 w-3" />
+                  {:else if p.type === 'Dial-Up'}
+                    <Radio class="h-3 w-3" />
+                  {:else}
+                    <Phone class="h-3 w-3" />
+                  {/if}
+                  <span>{p.type}</span>
+                </span>
+                {#if p.isPopular}
+                  <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                    {$language === 'vi' ? 'Phổ biến' : 'Popular'}
+                  </span>
+                {/if}
+              </div>
+
+              <h3 class="text-base font-bold text-[#0F1D2B] dark:text-white group-hover:text-sky-600 transition-colors">
+                {p.name}
+              </h3>
+              <p class="text-xs text-[#537292] dark:text-[#8DB0D4] mt-1 line-clamp-2">
+                {p.description || p.speedOrBandwidth}
+              </p>
+
+              <div class="mt-4 pt-4 border-t border-[#CCE4F7]/60 dark:border-[#253D56]/60 flex items-baseline space-x-1">
+                <span class="text-2xl font-black font-mono text-[#0F1D2B] dark:text-white">
+                  ${p.monthlyRental}
+                </span>
+                <span class="text-xs text-[#537292] dark:text-[#8DB0D4]">
+                  /{p.billingCycle.toLowerCase()}
+                </span>
+              </div>
+
+              <div class="mt-3 space-y-1.5 text-xs text-slate-600 dark:text-slate-300">
+                <div class="flex justify-between">
+                  <span class="text-slate-400">{$language === 'vi' ? 'Tiền cọc thiết bị:' : 'Security Deposit:'}</span>
+                  <span class="font-mono font-bold">${p.securityDeposit}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-400">{$language === 'vi' ? 'Tốc độ / Băng thông:' : 'Speed:'}</span>
+                  <span class="font-semibold">{p.speedOrBandwidth}</span>
+                </div>
+                <div class="flex justify-between">
+                  <span class="text-slate-400">{$language === 'vi' ? 'Thời hạn cước:' : 'Validity:'}</span>
+                  <span>{p.validity}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-5 pt-4 border-t border-[#CCE4F7]/60 dark:border-[#253D56]/60">
+              <button
+                type="button"
+                onclick={() => handleOpenOrderModal(p)}
+                class="w-full py-2.5 px-4 rounded-xl text-xs font-bold bg-sky-600 hover:bg-sky-700 active:scale-98 text-white transition shadow-xs flex items-center justify-center space-x-1.5 cursor-pointer"
+              >
+                <Plus class="h-3.5 w-3.5" />
+                <span>{$language === 'vi' ? 'Đăng ký gói này' : 'Subscribe Now'}</span>
+              </button>
+            </div>
+          </div>
+        {/each}
+      </div>
+
+      <!-- Order Customization Modal -->
+      {#if orderingPlan}
+        <div class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div class="bg-white dark:bg-[#152434] border border-[#CCE4F7] dark:border-[#253D56] rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-[#CCE4F7] dark:border-[#253D56]">
+              <div>
+                <h3 class="text-base font-bold text-[#0F1D2B] dark:text-white">
+                  {$language === 'vi' ? 'Xác nhận đăng ký gói cước' : 'Confirm Subscription'}
+                </h3>
+                <p class="text-xs text-sky-600 dark:text-sky-400 font-semibold mt-0.5">
+                  {orderingPlan.name} ({orderingPlan.type} · ${orderingPlan.monthlyRental}/{orderingPlan.billingCycle})
+                </p>
+              </div>
+              <button
+                type="button"
+                onclick={() => (orderingPlan = null)}
+                class="h-8 w-8 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 flex items-center justify-center"
+              >
+                <X class="h-4 w-4" />
+              </button>
+            </div>
+
+            <form onsubmit={handleConfirmNewServiceOrder} class="space-y-3.5 text-xs">
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block font-semibold text-[#305070] dark:text-slate-300 mb-1">
+                    {$language === 'vi' ? 'Họ và tên khách hàng' : 'Customer Full Name'} *
+                  </label>
+                  <input
+                    type="text"
+                    bind:value={newOrderCustomerName}
+                    required
+                    placeholder="Nguyễn Văn A"
+                    class="w-full px-3 py-2 text-xs bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl text-[#0F1D2B] dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+                <div>
+                  <label class="block font-semibold text-[#305070] dark:text-slate-300 mb-1">
+                    {$language === 'vi' ? 'Email liên hệ' : 'Contact Email'}
+                  </label>
+                  <input
+                    type="email"
+                    bind:value={newOrderCustomerEmail}
+                    placeholder="email@example.com"
+                    class="w-full px-3 py-2 text-xs bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl text-[#0F1D2B] dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label class="block font-semibold text-[#305070] dark:text-slate-300 mb-1">
+                  {$language === 'vi' ? 'Địa chỉ lắp đặt' : 'Installation Address'} *
+                </label>
+                <input
+                  type="text"
+                  bind:value={newOrderAddress}
+                  required
+                  class="w-full px-3 py-2 text-xs bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl text-[#0F1D2B] dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block font-semibold text-[#305070] dark:text-slate-300 mb-1">
+                    {$language === 'vi' ? 'Số điện thoại liên hệ' : 'Contact Phone'} *
+                  </label>
+                  <input
+                    type="text"
+                    bind:value={newOrderPhone}
+                    required
+                    class="w-full px-3 py-2 text-xs bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl text-[#0F1D2B] dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+
+                <div>
+                  <label class="block font-semibold text-[#305070] dark:text-slate-300 mb-1">
+                    {$language === 'vi' ? 'Chi nhánh xử lý' : 'Servicing Branch'} *
+                  </label>
+                  <select
+                    bind:value={newOrderShopCode}
+                    class="w-full px-3 py-2 text-xs bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl text-[#0F1D2B] dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  >
+                    {#each $retailShops as s (s.shopCode)}
+                      <option value={s.shopCode}>{s.name} ({s.shopCode})</option>
+                    {/each}
+                  </select>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block font-semibold text-[#305070] dark:text-slate-300 mb-1">
+                    {$language === 'vi' ? 'Loại giấy tờ' : 'ID Proof Type'}
+                  </label>
+                  <select
+                    bind:value={newOrderIdProofType}
+                    class="w-full px-3 py-2 text-xs bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl text-[#0F1D2B] dark:text-white font-medium"
+                  >
+                    <option value="National ID Card">{$language === 'vi' ? 'Căn cước công dân (CCCD)' : 'National ID Card'}</option>
+                    <option value="Passport">{$language === 'vi' ? 'Hộ chiếu (Passport)' : 'Passport'}</option>
+                    <option value="Driver's License">{$language === 'vi' ? 'Bằng lái xe' : "Driver's License"}</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label class="block font-semibold text-[#305070] dark:text-slate-300 mb-1">
+                    {$language === 'vi' ? 'Số giấy tờ (CCCD/Passport)' : 'ID Proof Number'} *
+                  </label>
+                  <input
+                    type="text"
+                    bind:value={newOrderIdProofNumber}
+                    required
+                    class="w-full px-3 py-2 text-xs bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56] rounded-xl text-[#0F1D2B] dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+              </div>
+
+              {#if orderingPlan.type === 'Dial-Up'}
+                <div class="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 space-y-2">
+                  <label class="flex items-center space-x-2 text-amber-800 dark:text-amber-300 font-medium cursor-pointer">
+                    <input type="checkbox" bind:checked={newOrderHasLandline} class="rounded text-amber-600 focus:ring-amber-500" />
+                    <span>{$language === 'vi' ? 'Tôi đã có đường thoại Nexus Landline sẵn tại địa chỉ này' : 'I already have an active Nexus Landline here'}</span>
+                  </label>
+                  {#if newOrderHasLandline}
+                    <p class="text-[11px] text-amber-700 dark:text-amber-400 pl-5">
+                      {$language === 'vi'
+                        ? `Sẽ liên kết với mã thuê bao hiện tại: ${accountId} (chỉ cần khảo sát tầng Internet).`
+                        : `Will link to your existing Landline account: ${accountId} (only internet leg surveyed).`}
+                    </p>
+                  {/if}
+                </div>
+              {/if}
+
+              <div class="pt-3 border-t border-[#CCE4F7] dark:border-[#253D56] flex items-center justify-end space-x-2.5">
+                <button
+                  type="button"
+                  onclick={() => (orderingPlan = null)}
+                  class="px-4 py-2 rounded-xl font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                >
+                  {$language === 'vi' ? 'Hủy' : 'Cancel'}
+                </button>
+                <button
+                  type="submit"
+                  class="px-5 py-2 rounded-xl font-bold bg-sky-600 hover:bg-sky-700 text-white shadow-xs transition"
+                >
+                  {$language === 'vi' ? 'Xác nhận đặt đơn' : 'Submit Order'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      {/if}
     </div>
   {:else if activeTab === 'settings'}
     <SettingsView />

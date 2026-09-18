@@ -35,8 +35,8 @@
   let agreeTerms = $state(true);
   let errorMessage = $state('');
 
-  // Bulk / corporate scheme (default 50 connections = 50 router devices)
-  let bulkConnectionsCount = $state(50);
+  // Bulk / corporate scheme (default 1 connection for personal, adjustable for corporate)
+  let bulkConnectionsCount = $state(1);
   // Dial-Up: does the customer already hold a Nexus landline?
   let hasExistingLandline = $state(false);
   let existingLandlineAccountId = $state('');
@@ -105,7 +105,7 @@
       planName: selectedPlan.name,
       retailOutletCode: selectedShop.shopCode,
       retailEmployeeName: 'Online Self-Service',
-      bulkConnectionsCount: Math.max(1, bulkConnectionsCount || 50),
+      bulkConnectionsCount: customerType === 'business' ? Math.max(1, bulkConnectionsCount || 1) : 1,
       ...(selectedPlan.type === 'Dial-Up' && hasExistingLandline && existingLandlineAccountId.trim()
         ? { existingLandlineAccountId: existingLandlineAccountId.trim() }
         : {}),
@@ -258,9 +258,24 @@
               </div>
             </div>
             <div class="p-3 rounded-xl bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56]">
+              <div class="text-[#537292] dark:text-[#8DB0D4]">{$t.registrationPage.retailAgentAssigned}</div>
+              <div class="font-bold text-[#0F1D2B] dark:text-white mt-0.5">
+                {placedOrder.retailEmployeeName}
+                {#if placedOrder.assignedBranchName}
+                  <span class="font-medium text-[#537292] dark:text-[#8DB0D4]">· {placedOrder.assignedBranchName}</span>
+                {/if}
+              </div>
+            </div>
+            <div class="p-3 rounded-xl bg-[#EDF6FF] dark:bg-[#101C29] border border-[#CCE4F7] dark:border-[#253D56]">
               <div class="text-[#537292] dark:text-[#8DB0D4]">{$t.registrationPage.addressLabel}</div>
               <div class="font-bold text-[#0F1D2B] dark:text-white mt-0.5">{placedOrder.installationAddress}</div>
             </div>
+          </div>
+
+          <!-- Stage 1 notice: the order goes to the branch's retail desk first -->
+          <div class="mt-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-800 dark:text-amber-300 flex items-start gap-2">
+            <ShieldCheck class="h-3.5 w-3.5 shrink-0 mt-0.5" />
+            <span>{$t.registrationPage.retailStageHint}</span>
           </div>
 
           <!-- Next steps -->

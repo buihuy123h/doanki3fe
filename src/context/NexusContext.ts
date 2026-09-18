@@ -18,9 +18,24 @@ import {
   type ConnectionStatus,
   type ConnectionType,
   type RoleType,
+  isReleasedToTechnical,
+  isAwaitingRetailApproval,
+  RETAIL_STAGE_STATUSES,
 } from '../types/nexus';
+import {
+  updateEmployeeApi,
+  createEmployeeApi,
+  updateInventoryItemApi,
+  createInventoryItemApi,
+  createEquipmentApi,
+  createBillApi,
+  recordPaymentApi,
+  fetchBillsApi,
+  fetchConnectionsApi,
+  createOrUpdateConnectionApi,
+} from '../lib/api';
 
-export { getBulkDiscountPercent };
+export { getBulkDiscountPercent, isReleasedToTechnical, isAwaitingRetailApproval, RETAIL_STAGE_STATUSES };
 
 // 11-char Order ID: prefix D/B/T + 10-digit serial (e.g. D0000000001)
 export function generateOrderId(type: ConnectionType, count: number): string {
@@ -283,6 +298,7 @@ const INITIAL_EMPLOYEES: Employee[] = [
     phone: '+1 (555) 789-3344',
     role: 'Field Engineer',
     department: 'Technical Operations',
+    retailShopAssigned: 'Downtown Flagship (SH-01)',
     status: 'Active',
     dateOfJoining: '2021-11-04',
   },
@@ -308,6 +324,42 @@ const INITIAL_EMPLOYEES: Employee[] = [
     retailShopAssigned: 'Metro Uptown Hub (SH-02)',
     status: 'Active',
     dateOfJoining: '2024-01-15',
+  },
+  {
+    id: 'emp-06',
+    employeeCode: 'EMP-1120',
+    name: 'Alex Tran',
+    email: 'alex.tran@nexus.telecom',
+    phone: '+1 (555) 882-9911',
+    role: 'Field Engineer',
+    department: 'Technical Operations',
+    retailShopAssigned: 'Metro Uptown Hub (SH-02)',
+    status: 'Active',
+    dateOfJoining: '2022-04-18',
+  },
+  {
+    id: 'emp-07',
+    employeeCode: 'EMP-1135',
+    name: 'Liam Nguyen',
+    email: 'liam.nguyen@nexus.telecom',
+    phone: '+1 (555) 667-4422',
+    role: 'Field Engineer',
+    department: 'Technical Operations',
+    retailShopAssigned: 'Queens Center (SH-03)',
+    status: 'Active',
+    dateOfJoining: '2023-01-10',
+  },
+  {
+    id: 'emp-08',
+    employeeCode: 'EMP-1150',
+    name: 'Carlos Mendez',
+    email: 'carlos.mendez@nexus.telecom',
+    phone: '+1 (555) 991-3377',
+    role: 'Field Engineer',
+    department: 'Technical Operations',
+    retailShopAssigned: 'Brooklyn Depot (SH-04)',
+    status: 'Active',
+    dateOfJoining: '2023-09-01',
   },
 ];
 
@@ -500,9 +552,18 @@ const INITIAL_ORDERS: Order[] = [
     planId: 'plan-du-56',
     planName: 'Dial-Up Unlimited 56 Kbps',
     retailOutletCode: 'SH-02',
-    retailEmployeeName: 'David Chen',
+    retailEmployeeName: 'Aiden Brooks',
+    // STAGE 1: freshly submitted, still waiting for the SH-02 desk to check paperwork.
+    assignedEmployeeId: 'emp-05',
+    assignedBranchName: 'Metro Uptown Tech Hub',
     createdAt: '2026-09-04 10:30',
     status: 'Pending',
+    retailApprovedBy: 'Aiden Brooks',
+    retailApprovedAt: '2026-09-04 10:35',
+    assignedTechnician: 'Alex Tran',
+    assignedTechnicianId: 'emp-06',
+    assignedTechnicianPhone: '+1 (555) 882-9911',
+    assignedTechnicianDate: '2026-09-04 10:40',
     cableDistanceMeters: 420,
     dpBoxCapacity: 'Port 6 Available / DP-B12',
     signalLossDbm: -18.5,
@@ -523,6 +584,12 @@ const INITIAL_ORDERS: Order[] = [
     planName: 'Broadband Unlimited 128 Kbps',
     retailOutletCode: 'SH-01',
     retailEmployeeName: 'David Chen',
+    // STAGE 2 done by the SH-01 desk, STAGE 3 passed by Technical.
+    assignedEmployeeId: 'emp-02',
+    assignedBranchName: 'Downtown Nexus Flagship Store',
+    retailApprovedBy: 'David Chen',
+    retailApprovedAt: '2026-09-04 15:02',
+    retailApprovalNotes: 'Hồ sơ SCTT hợp lệ, đúng địa bàn chi nhánh.',
     createdAt: '2026-09-04 14:15',
     status: 'Feasible',
     assignedAccountId: 'B064-000000000005',
@@ -582,6 +649,85 @@ const INITIAL_ORDERS: Order[] = [
     internetFeasible: false,
   },
   {
+    id: 'B0000000005',
+    customerName: 'Victoria Sterling',
+    customerPhone: '+1 (555) 441-2099',
+    customerEmail: 'v.sterling@apexlegal.org',
+    installationAddress: '120 E 64th St, Manhattan, NY 10065',
+    idProofType: 'National ID Card',
+    idProofNumber: 'ID-US-7721890',
+    connectionType: 'Broadband',
+    planId: 'plan-bb-64',
+    planName: 'Broadband Unlimited 64 Kbps',
+    retailOutletCode: 'SH-01',
+    retailEmployeeName: 'David Chen',
+    assignedEmployeeId: 'emp-02',
+    assignedBranchName: 'Downtown Nexus Flagship Store',
+    createdAt: '2026-08-14 10:00',
+    status: 'Connection Provided',
+    assignedAccountId: 'B064-000000000002',
+    feasibilityNotes: 'Direct splice into riser. Verified gigabit throughput.',
+    cableDistanceMeters: 60,
+    dpBoxCapacity: 'Port 1 Dedicated / DP-M01',
+    signalLossDbm: -14.8,
+    bulkConnectionsCount: 1,
+    bulkDiscountPercent: 0,
+    internetFeasible: true,
+  },
+  {
+    id: 'D0000000006',
+    customerName: 'Retro Arcade Lounge LLC',
+    customerPhone: '+1 (555) 332-9011',
+    customerEmail: 'manager@retroarcadeny.com',
+    installationAddress: '31 St Marks pl, East Village, NY 10003',
+    idProofType: "Driver's License",
+    idProofNumber: 'DL-NY-3391024',
+    connectionType: 'Dial-Up',
+    planId: 'plan-du-56',
+    planName: 'Dial-Up Unlimited 56 Kbps',
+    retailOutletCode: 'SH-01',
+    retailEmployeeName: 'David Chen',
+    assignedEmployeeId: 'emp-02',
+    assignedBranchName: 'Downtown Nexus Flagship Store',
+    createdAt: '2026-07-08 15:30',
+    status: 'Connection Provided',
+    assignedAccountId: 'D064-000000000003',
+    feasibilityNotes: 'PSTN copper pair active.',
+    cableDistanceMeters: 150,
+    dpBoxCapacity: 'PSTN Riser Port 3',
+    signalLossDbm: -17.2,
+    bulkConnectionsCount: 1,
+    bulkDiscountPercent: 0,
+    landlineFeasible: true,
+    internetFeasible: true,
+  },
+  {
+    id: 'B0000000007',
+    customerName: 'Jonathan Meyer',
+    customerPhone: '+1 (555) 881-2300',
+    customerEmail: 'j.meyer@brooklynloft.io',
+    installationAddress: '175 Water St, Dumbo, Brooklyn, NY 11201',
+    idProofType: 'Passport',
+    idProofNumber: 'P-77123984',
+    connectionType: 'Broadband',
+    planId: 'plan-bb-64',
+    planName: 'Broadband Unlimited 64 Kbps',
+    retailOutletCode: 'SH-04',
+    retailEmployeeName: 'Aiden Brooks',
+    assignedEmployeeId: 'emp-05',
+    assignedBranchName: 'Brooklyn Nexus Connect Depot',
+    createdAt: '2026-05-15 11:00',
+    status: 'Connection Provided',
+    assignedAccountId: 'B081-000000000004',
+    feasibilityNotes: 'Initial install verified.',
+    cableDistanceMeters: 90,
+    dpBoxCapacity: 'DP-BK-11 Port 4',
+    signalLossDbm: -15.5,
+    bulkConnectionsCount: 1,
+    bulkDiscountPercent: 0,
+    internetFeasible: true,
+  },
+  {
     id: 'B0000000008',
     customerName: 'Công ty Cổ phần AlphaTech',
     customerPhone: '+84 912 345 678',
@@ -604,6 +750,56 @@ const INITIAL_ORDERS: Order[] = [
     bulkConnectionsCount: 3,
     bulkDiscountPercent: 0,
     internetFeasible: true,
+  },
+  {
+    // STAGE 1 rejected by the SH-01 desk: never reaches Technical.
+    id: 'T0000000009',
+    customerName: 'Margaret Whitfield',
+    customerPhone: '+1 (555) 220-7741',
+    customerEmail: 'm.whitfield@outlook.com',
+    installationAddress: '311 W 116th St, Apt 2C, New York, NY 10026',
+    idProofType: 'National ID Card',
+    idProofNumber: 'ID-US-4410227',
+    connectionType: 'Landline',
+    planId: 'plan-ll-std-m',
+    planName: 'Landline STD - Monthly',
+    retailOutletCode: 'SH-01',
+    retailEmployeeName: 'David Chen',
+    assignedEmployeeId: 'emp-02',
+    assignedBranchName: 'Downtown Nexus Flagship Store',
+    retailApprovedBy: 'David Chen',
+    retailApprovedAt: '2026-09-12 09:40',
+    retailRejectionReason:
+      'Card presented is expired; proof of tenure at the installation address not supplied. Customer asked to re-submit with valid ID.',
+    createdAt: '2026-09-11 16:20',
+    status: 'Not Approved',
+    bulkConnectionsCount: 1,
+    bulkDiscountPercent: 0,
+  },
+  {
+    // STAGE 2 cleared by the SH-01 desk and now waiting in the Technical queue.
+    id: 'B0000000010',
+    customerName: 'Bay Ridge Dental Group',
+    customerPhone: '+1 (555) 640-2288',
+    customerEmail: 'ops@bayridgedental.com',
+    installationAddress: '7420 5th Ave, Brooklyn, NY 11209',
+    idProofType: "Driver's License",
+    idProofNumber: 'DL-NY-7712055',
+    connectionType: 'Broadband',
+    planId: 'plan-bb-128',
+    planName: 'Broadband Unlimited 128 Kbps',
+    retailOutletCode: 'SH-01',
+    retailEmployeeName: 'David Chen',
+    assignedEmployeeId: 'emp-02',
+    assignedBranchName: 'Downtown Nexus Flagship Store',
+    retailApprovedBy: 'David Chen',
+    retailApprovedAt: '2026-09-15 08:25',
+    retailApprovalNotes:
+      'Doanh nghiệp xuất trình đủ ĐKKD và giấy hẹn mặt bằng. Chuyển kỹ thuật khảo sát.',
+    createdAt: '2026-09-15 08:10',
+    status: 'Pending',
+    bulkConnectionsCount: 6,
+    bulkDiscountPercent: 0,
   },
 ];
 
@@ -947,7 +1143,8 @@ function persist(key: string) {
 
 function createNexusStore() {
   // Bumped when the seed schema changes so stale localStorage is not reloaded.
-  const V = '_v3';
+  // v7: added technician assignment workflow for feasibility survey
+  const V = '_v7';
   const currentRole = writable<RoleType>('admin');
   const dbConnected = writable<boolean>(false);
   const dbInfo = writable<{
@@ -997,12 +1194,56 @@ function createNexusStore() {
   };
 
   // ---- Employee Handlers ----
-  const addEmployee = (emp: Omit<Employee, 'id'>) => {
-    employees.update((prev) => [{ ...emp, id: `emp-${Date.now()}` }, ...prev]);
+  const addEmployee = async (emp: Omit<Employee, 'id'>, password?: string) => {
+    try {
+      const created = await createEmployeeApi({
+        employeeCode: emp.employeeCode,
+        fullName: emp.name,
+        email: emp.email,
+        phone: emp.phone,
+        role: emp.role,
+        department: emp.department,
+        retailShopAssigned: emp.retailShopAssigned,
+        status: emp.status,
+        dateOfJoining: emp.dateOfJoining,
+        password,
+      });
+      const newEmp: Employee = {
+        ...emp,
+        id: created.employeeId || created.id || `emp-${Date.now()}`,
+        employeeCode: created.employeeCode || emp.employeeCode,
+      };
+      employees.update((prev) => [newEmp, ...prev]);
+      return newEmp;
+    } catch (err) {
+      console.warn('[Nexus] API create employee failed, saving locally:', err);
+      const fallbackEmp = { ...emp, id: `emp-${Date.now()}` };
+      employees.update((prev) => [fallbackEmp, ...prev]);
+      return fallbackEmp;
+    }
   };
-  const updateEmployee = (id: string, updated: Partial<Employee>) => {
+
+  const updateEmployee = async (id: string, updated: Partial<Employee>, password?: string) => {
+    try {
+      const current = get(employees).find((e) => e.id === id);
+      const merged = { ...current, ...updated };
+      await updateEmployeeApi(id, {
+        fullName: merged.name || '',
+        email: merged.email || '',
+        phone: merged.phone,
+        role: merged.role || 'Retail Staff',
+        department: merged.department || 'Retail Outlets',
+        retailShopAssigned: merged.retailShopAssigned,
+        status: merged.status || 'Active',
+        dateOfJoining: merged.dateOfJoining,
+        password,
+      });
+    } catch (err) {
+      console.warn('[Nexus] API update employee failed, saving locally:', err);
+    }
     employees.update((prev) => prev.map((e) => (e.id === id ? { ...e, ...updated } : e)));
   };
+
   const deleteEmployee = (id: string) => {
     employees.update((prev) => prev.filter((e) => e.id !== id));
   };
@@ -1037,12 +1278,54 @@ function createNexusStore() {
       )
     );
   };
-  const addInventoryItem = (item: Omit<InventoryItem, 'id'>) => {
-    inventory.update((prev) => [{ ...item, id: `inv-${Date.now()}` }, ...prev]);
+
+  const addInventoryItem = async (item: Omit<InventoryItem, 'id'>) => {
+    try {
+      const created = await createInventoryItemApi({
+        itemCode: item.itemCode,
+        name: item.name,
+        category: item.category,
+        stockQuantity: item.stockQuantity,
+        reorderLevel: item.reorderLevel,
+        unitCost: item.unitCost,
+        location: item.location,
+        supplier: item.supplier,
+      });
+      const newItem: InventoryItem = {
+        ...item,
+        id: created.inventoryId || created.id || `inv-${Date.now()}`,
+        itemCode: created.itemCode || item.itemCode,
+      };
+      inventory.update((prev) => [newItem, ...prev]);
+      return newItem;
+    } catch (err) {
+      console.warn('[Nexus] API add inventory item failed, saving locally:', err);
+      const fallbackItem = { ...item, id: `inv-${Date.now()}` };
+      inventory.update((prev) => [fallbackItem, ...prev]);
+      return fallbackItem;
+    }
   };
-  const updateInventoryItem = (id: string, updated: Partial<InventoryItem>) => {
+
+  const updateInventoryItem = async (id: string, updated: Partial<InventoryItem>) => {
+    try {
+      const current = get(inventory).find((i) => i.id === id);
+      const merged = { ...current, ...updated };
+      await updateInventoryItemApi(id, {
+        itemCode: merged.itemCode,
+        name: merged.name || '',
+        category: merged.category || 'Modem',
+        stockQuantity: merged.stockQuantity || 0,
+        reorderLevel: merged.reorderLevel || 0,
+        unitCost: merged.unitCost || 0,
+        location: merged.location,
+        supplier: merged.supplier,
+      });
+    } catch (err) {
+      console.warn('[Nexus] API update inventory item failed, saving locally:', err);
+    }
     inventory.update((prev) => prev.map((item) => (item.id === id ? { ...item, ...updated } : item)));
   };
+
   const deleteInventoryItem = (id: string) => {
     inventory.update((prev) => prev.filter((item) => item.id !== id));
   };
@@ -1062,6 +1345,48 @@ function createNexusStore() {
     | 'internetFeasible'
   > & { bulkConnectionsCount?: number };
 
+  // ---- Two-stage approval helpers ----
+  // Timestamp in the same "YYYY-MM-DD HH:mm" shape used by the rest of the store.
+  const nowStamp = (): string => {
+    const now = new Date();
+    return `${now.toISOString().slice(0, 10)} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  };
+
+  // Resolves the Retail Staff member assigned to a branch so a freshly submitted
+  // application lands in that specific person's queue (not in a global pool).
+  // Matching is done on the shop code that appears inside Employee.retailShopAssigned
+  // (e.g. 'Downtown Flagship (SH-01)'), falling back to the branch's own manager.
+  const routeOrderToBranch = (
+    shopCode: string,
+    fallbackEmployeeName?: string
+  ): { assignedEmployeeId?: string; assignedBranchName?: string; retailEmployeeName: string } => {
+    const shop = get(retailShops).find((s) => s.shopCode === shopCode);
+    const branchName = shop?.name ?? shopCode;
+
+    const staff = get(employees).find(
+      (e) =>
+        e.role === 'Retail Staff' &&
+        e.status === 'Active' &&
+        !!e.retailShopAssigned &&
+        e.retailShopAssigned.toUpperCase().includes(`(${shopCode.toUpperCase()})`)
+    );
+
+    if (staff) {
+      return {
+        assignedEmployeeId: staff.id,
+        assignedBranchName: branchName,
+        retailEmployeeName: staff.name,
+      };
+    }
+
+    // No staff record for the branch: still route by branch code and keep whatever
+    // name the caller supplied (e.g. 'Online Self-Service' for customer sign-ups).
+    return {
+      assignedBranchName: branchName,
+      retailEmployeeName: fallbackEmployeeName ?? 'Unassigned Retail Desk',
+    };
+  };
+
   const nextOrderIdSerial = (): number => {
     const currentOrders = get(orders);
     let maxSerial = 0;
@@ -1080,23 +1405,120 @@ function createNexusStore() {
     const dateStr = now.toISOString().slice(0, 10);
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    const bulkConnectionsCount = Math.max(1, Math.floor(orderData.bulkConnectionsCount ?? 50));
+    const bulkConnectionsCount = Math.max(1, Math.floor(orderData.bulkConnectionsCount ?? 1));
+
+    // STAGE 1 routing: pin the application to the retail staff of the branch the
+    // customer chose, so it never appears in another outlet's (or Technical's) queue.
+    const routing = routeOrderToBranch(
+      orderData.retailOutletCode,
+      orderData.retailEmployeeName
+    );
 
     const newOrder: Order = {
       ...orderData,
+      ...routing,
       bulkConnectionsCount,
       bulkDiscountPercent: getBulkDiscountPercent(bulkConnectionsCount),
       id: newId,
+      // UNIFIED WORKFLOW: Direct release to Technical Feasibility Queue as 'Pending'
       status: 'Pending',
       createdAt: `${dateStr} ${timeStr}`,
       cableDistanceMeters: Math.floor(60 + Math.random() * 400),
       dpBoxCapacity: 'Port available / DP-Scan',
       signalLossDbm: Number(-(14 + Math.random() * 8).toFixed(1)),
+      retailApprovedBy: orderData.retailEmployeeName || 'Online Application',
+      retailApprovedAt: `${dateStr} ${timeStr}`,
     };
 
     orders.update((prev) => [newOrder, ...prev]);
     return newOrder;
   };
+
+  // STAGE 2a — a branch's Retail Staff approves the paperwork. The order leaves the
+  // retail queue and enters the Technical feasibility queue as 'Pending'.
+  const approveOrderByRetail = (
+    orderId: string,
+    approvedBy: string,
+    notes?: string
+  ): Order | null => {
+    let updatedOrder: Order | null = null;
+    const stamp = nowStamp();
+
+    orders.update((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+        if (ord.status !== 'PendingRetail') return ord;
+
+        updatedOrder = {
+          ...ord,
+          status: 'Pending',
+          retailApprovedBy: approvedBy,
+          retailApprovedAt: stamp,
+          retailApprovalNotes: notes?.trim() || undefined,
+          retailRejectionReason: undefined,
+        };
+        return updatedOrder;
+      })
+    );
+
+    return updatedOrder;
+  };
+
+  // STAGE 2b — the Retail Staff rejects the application (wrong branch, bad ID proof,
+  // incomplete paperwork...). It never reaches Technical and carries a reason.
+  const rejectOrderByRetail = (
+    orderId: string,
+    rejectedBy: string,
+    reason: string
+  ): Order | null => {
+    let updatedOrder: Order | null = null;
+    const stamp = nowStamp();
+
+    orders.update((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+        if (ord.status !== 'PendingRetail') return ord;
+
+        updatedOrder = {
+          ...ord,
+          status: 'Not Approved',
+          retailApprovedBy: rejectedBy,
+          retailApprovedAt: stamp,
+          retailRejectionReason: reason.trim(),
+        };
+        return updatedOrder;
+      })
+    );
+
+    return updatedOrder;
+  };
+
+  // Lets a rejected application be edited/resubmitted by the same branch desk.
+  const resubmitOrderToRetail = (orderId: string): Order | null => {
+    let updatedOrder: Order | null = null;
+
+    orders.update((prev) =>
+      prev.map((ord) => {
+        if (ord.id !== orderId) return ord;
+        if (ord.status !== 'Not Approved') return ord;
+
+        updatedOrder = {
+          ...ord,
+          status: 'PendingRetail',
+          retailApprovedBy: undefined,
+          retailApprovedAt: undefined,
+          retailRejectionReason: undefined,
+        };
+        return updatedOrder;
+      })
+    );
+
+    return updatedOrder;
+  };
+
+  // Guard for the Technical stage: an order must be cleared by its branch's retail
+  // staff before a Field Engineer may assess it.
+  const canTechnicalAssess = (ord: Order): boolean => isReleasedToTechnical(ord.status);
 
   // Account ID serial: next strictly increasing number across all connections and orders
   const nextAccountIdSerial = (): number => {
@@ -1134,6 +1556,15 @@ function createNexusStore() {
   ): Order | null => {
     let updatedOrder: Order | null = null;
 
+    // STAGE GUARD: a Field Engineer may only move orders that the branch's retail
+    // staff already cleared. Anything still sitting in the retail queue
+    // ('PendingRetail' / 'Not Approved') is refused here as a second line of defence,
+    // even if a caller bypasses the UI.
+    const gate = get(orders).find((o) => o.id === orderId);
+    if (gate && !isReleasedToTechnical(gate.status)) {
+      return null;
+    }
+
     orders.update((prev) =>
       prev.map((ord) => {
         if (ord.id === orderId) {
@@ -1164,6 +1595,47 @@ function createNexusStore() {
               status === 'Feasible' && { internetFeasible: true }),
             ...(ord.connectionType !== 'Dial-Up' &&
               status === 'Not Feasible' && { internetFeasible: false }),
+          };
+          return updatedOrder;
+        }
+        return ord;
+      })
+    );
+
+    return updatedOrder;
+  };
+
+  // ---- Assign Technician for Feasibility Survey ----
+  const assignTechnicianToOrder = (
+    orderId: string,
+    technicianName: string,
+    technicianId?: string,
+    technicianPhone?: string,
+    surveyNotes?: string
+  ): Order | null => {
+    let updatedOrder: Order | null = null;
+    const now = new Date();
+    const dateStr = now.toISOString().slice(0, 10);
+    const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const assignedStamp = `${dateStr} ${timeStr}`;
+
+    orders.update((prev) =>
+      prev.map((ord) => {
+        if (ord.id === orderId) {
+          const notes = surveyNotes?.trim();
+          const combinedNotes = notes
+            ? ord.feasibilityNotes
+              ? `${ord.feasibilityNotes} | ${notes}`
+              : notes
+            : ord.feasibilityNotes;
+
+          updatedOrder = {
+            ...ord,
+            assignedTechnician: technicianName,
+            assignedTechnicianId: technicianId,
+            assignedTechnicianPhone: technicianPhone,
+            assignedTechnicianDate: assignedStamp,
+            feasibilityNotes: combinedNotes,
           };
           return updatedOrder;
         }
@@ -1240,6 +1712,27 @@ function createNexusStore() {
 
     connections.update((prev) => [newConnection, ...prev]);
 
+    // Persist provisioned connection to SQL Server DB
+    createOrUpdateConnectionApi({
+      accountId: newConnection.accountId,
+      orderId: newConnection.orderId,
+      customerId: (order as any).customerId || 'CUST-0001',
+      customerName: newConnection.customerName,
+      customerPhone: newConnection.customerPhone,
+      customerEmail: newConnection.customerEmail,
+      installationAddress: newConnection.installationAddress,
+      planName: newConnection.planName,
+      connectionType: newConnection.connectionType,
+      monthlyRental: newConnection.monthlyRental,
+      securityDeposit: newConnection.securityDeposit,
+      status: newConnection.status,
+      ipAddress: newConnection.ipAddress,
+      portNumber: newConnection.portNumber,
+      assignedDeviceSerial: newConnection.assignedDeviceSerial,
+      assignedDeviceModel: newConnection.assignedDeviceModel,
+      installedDate: newConnection.installedDate,
+    }).catch((err) => console.warn('[NexusContext] Failed to persist connection to DB:', err));
+
     // Bind equipment to this specific connection (1 connection = 1 router)
     if (assignedDeviceSerial) {
       equipments.update((prev) =>
@@ -1267,23 +1760,66 @@ function createNexusStore() {
     const now = new Date();
     const stamp = `${now.toISOString().slice(0, 10)} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
     connections.update((prev) =>
-      prev.map((conn) =>
-        conn.accountId === accountId
-          ? {
-              ...conn,
-              status,
-              lastUpdated: stamp,
-              lastStatusReason: reason || conn.lastStatusReason,
-            }
-          : conn
-      )
+      prev.map((conn) => {
+        if (conn.accountId === accountId) {
+          const updated = {
+            ...conn,
+            status,
+            lastUpdated: stamp,
+            lastStatusReason: reason || conn.lastStatusReason,
+          };
+          // Persist status change to SQL Server DB
+          createOrUpdateConnectionApi({
+            accountId: updated.accountId,
+            orderId: updated.orderId,
+            customerName: updated.customerName,
+            customerPhone: updated.customerPhone,
+            customerEmail: updated.customerEmail,
+            installationAddress: updated.installationAddress,
+            planName: updated.planName,
+            connectionType: updated.connectionType,
+            monthlyRental: updated.monthlyRental,
+            securityDeposit: updated.securityDeposit,
+            status: updated.status,
+            ipAddress: updated.ipAddress,
+            portNumber: updated.portNumber,
+            assignedDeviceSerial: updated.assignedDeviceSerial,
+            assignedDeviceModel: updated.assignedDeviceModel,
+            installedDate: updated.installedDate,
+            lastStatusReason: updated.lastStatusReason,
+          }).catch((err) => console.warn('[NexusContext] Failed to update connection in DB:', err));
+          return updated;
+        }
+        return conn;
+      })
     );
   };
 
   // ---- Equipment Handlers ----
-  const addEquipment = (eq: Omit<Equipment, 'id'>) => {
-    equipments.update((prev) => [{ ...eq, id: `eq-${Date.now()}` }, ...prev]);
+  const addEquipment = async (eq: Omit<Equipment, 'id'>) => {
+    try {
+      const created = await createEquipmentApi({
+        serialNumber: eq.serialNumber,
+        macAddress: eq.macAddress,
+        deviceModel: eq.deviceModel,
+        deviceType: eq.deviceType,
+        firmwareVersion: eq.firmwareVersion,
+        status: eq.status || 'In Stock',
+      });
+      const newEq: Equipment = {
+        ...eq,
+        id: created.equipmentId || `eq-${Date.now()}`,
+      };
+      equipments.update((prev) => [newEq, ...prev]);
+      return newEq;
+    } catch (err) {
+      console.warn('[Nexus] API add equipment failed, saving locally:', err);
+      const fallbackEq = { ...eq, id: `eq-${Date.now()}` };
+      equipments.update((prev) => [fallbackEq, ...prev]);
+      return fallbackEq;
+    }
   };
+
   const updateEquipment = (id: string, updated: Partial<Equipment>) => {
     equipments.update((prev) => prev.map((eq) => (eq.id === id ? { ...eq, ...updated } : eq)));
   };
@@ -1343,6 +1879,32 @@ function createNexusStore() {
     };
 
     bills.update((prev) => [newBill, ...prev]);
+
+    // Persist new bill to SQL Server database
+    createBillApi({
+      accountId,
+      billingMonth,
+      securityDeposit,
+      monthlyRental,
+      hourlyCharges,
+      discountPercent: pct,
+      discountAmount,
+      subtotal,
+      serviceTaxRate: taxRate,
+      serviceTaxAmount,
+      totalAmount,
+      invoiceNumber: invoiceNum,
+    }).then((created) => {
+      console.log('[NexusContext] Bill persisted to SQL Server database:', created);
+      if (created && created.invoiceNumber && created.invoiceNumber !== invoiceNum) {
+        bills.update((prev) =>
+          prev.map((b) => (b.invoiceNumber === invoiceNum ? { ...b, invoiceNumber: created.invoiceNumber, id: created.billId || b.id } : b))
+        );
+      }
+    }).catch((err) => {
+      console.warn('[NexusContext] Failed to persist bill to SQL Server:', err);
+    });
+
     return newBill;
   };
 
@@ -1383,6 +1945,22 @@ function createNexusStore() {
         return bill;
       })
     );
+
+    // Persist payment to SQL Server database
+    if (updatedBill) {
+      recordPaymentApi({
+        invoiceNumber,
+        amountPaid,
+        paymentMode,
+        referenceNumber,
+        recordedBy,
+        notes: `Recorded by ${recordedBy}`,
+      }).then((res) => {
+        console.log('[NexusContext] Payment persisted to SQL Server database:', res);
+      }).catch((err) => {
+        console.warn('[NexusContext] Failed to persist payment to SQL Server:', err);
+      });
+    }
 
     // SPEC: "Chỉ postpaid: bill được sinh ra, và trạng thái kết nối phụ thuộc vào bill"
     // When bill is settled in full, automatically restore any Temporarily Inactive connection to Active.
@@ -1448,10 +2026,51 @@ function createNexusStore() {
           if (data.employees && data.employees.length > 0) employees.set(data.employees);
           if (data.vendors && data.vendors.length > 0) vendors.set(data.vendors);
           if (data.inventory && data.inventory.length > 0) inventory.set(data.inventory);
-          if (data.orders && data.orders.length > 0) orders.set(data.orders);
-          if (data.connections && data.connections.length > 0) connections.set(data.connections);
-          if (data.equipments && data.equipments.length > 0) equipments.set(data.equipments);
-          if (data.bills && data.bills.length > 0) bills.set(data.bills);
+          if (data.orders && data.orders.length > 0) {
+            // The SQL bridge is READ-ONLY and the DB's CK_Orders_Status does not know
+            // the two-stage statuses, so a plain `orders.set()` would erase every
+            // application created or approved in this browser on the next reload.
+            // Merge instead: DB rows are the base, but any order this session already
+            // owns (new, retail-approved or retail-rejected) keeps its local state.
+            const localOrders = get(orders);
+            const localById = new Map(localOrders.map((o) => [o.id, o]));
+            const mergedFromDb: Order[] = (data.orders as Order[]).map(
+              (o) => localById.get(o.id) ?? o
+            );
+            (data.orders as Order[]).forEach((o) => localById.delete(o.id));
+            orders.set([...localById.values(), ...mergedFromDb]);
+          }
+
+          if (data.connections && data.connections.length > 0) {
+            const localConns = get(connections);
+            const localById = new Map(localConns.map((c) => [c.accountId.replace(/-/g, ''), c]));
+            const mergedFromDb: Connection[] = (data.connections as Connection[]).map(
+              (c) => localById.get(c.accountId.replace(/-/g, '')) ?? c
+            );
+            (data.connections as Connection[]).forEach((c) => localById.delete(c.accountId.replace(/-/g, '')));
+            connections.set([...localById.values(), ...mergedFromDb]);
+          }
+
+          if (data.equipments && data.equipments.length > 0) {
+            const localEqs = get(equipments);
+            const localById = new Map(localEqs.map((e) => [e.serialNumber, e]));
+            const mergedFromDb: Equipment[] = (data.equipments as Equipment[]).map(
+              (e) => localById.get(e.serialNumber) ?? e
+            );
+            (data.equipments as Equipment[]).forEach((e) => localById.delete(e.serialNumber));
+            equipments.set([...localById.values(), ...mergedFromDb]);
+          }
+
+          if (data.bills && data.bills.length > 0) {
+            const localBills = get(bills);
+            const localById = new Map(localBills.map((b) => [b.invoiceNumber, b]));
+            const mergedFromDb: Bill[] = (data.bills as Bill[]).map(
+              (b) => localById.get(b.invoiceNumber) ?? b
+            );
+            (data.bills as Bill[]).forEach((b) => localById.delete(b.invoiceNumber));
+            bills.set([...localById.values(), ...mergedFromDb]);
+          }
+
           if (data.feedbacks && data.feedbacks.length > 0) feedbacks.set(data.feedbacks);
           if (data.settings) settings.set(data.settings);
 
@@ -1465,9 +2084,85 @@ function createNexusStore() {
             orderCount: data.orders ? data.orders.length : 7,
           });
           console.log('[Nexus] Successfully hydrated state from Microsoft SQL Server [NexusSystem]');
-          return true;
         }
       }
+
+      // Also hydrate directly from backend API endpoints (Connections & Bills)
+      try {
+        const [apiConns, apiBills] = await Promise.all([
+          fetchConnectionsApi().catch(() => null),
+          fetchBillsApi().catch(() => null),
+        ]);
+
+        if (apiConns && Array.isArray(apiConns) && apiConns.length > 0) {
+          const localConns = get(connections);
+          const localById = new Map(localConns.map((c) => [c.accountId.replace(/-/g, ''), c]));
+          const mappedConns: Connection[] = apiConns.map((ac: any) => ({
+            accountId: ac.accountId,
+            orderId: ac.orderId,
+            customerName: ac.customerName,
+            customerPhone: ac.customerPhone || '',
+            customerEmail: ac.customerEmail || '',
+            installationAddress: ac.installationAddress || '',
+            connectionType: ac.connectionType || 'Broadband',
+            planName: ac.planName || '',
+            monthlyRental: ac.monthlyRental ?? 0,
+            securityDeposit: ac.securityDeposit ?? 0,
+            status: ac.status || 'Active',
+            ipAddress: ac.ipAddress || '',
+            portNumber: ac.portNumber || '',
+            assignedDeviceSerial: ac.assignedDeviceSerial || '',
+            assignedDeviceModel: ac.assignedDeviceModel || '',
+            installedDate: ac.installedDate ? ac.installedDate.slice(0, 10) : new Date().toISOString().slice(0, 10),
+            lastUpdated: ac.lastUpdated ? ac.lastUpdated.slice(0, 10) : new Date().toISOString().slice(0, 10),
+            lastStatusReason: ac.lastStatusReason || '',
+          }));
+          mappedConns.forEach((c) => localById.set(c.accountId.replace(/-/g, ''), { ...localById.get(c.accountId.replace(/-/g, '')), ...c }));
+          connections.set([...localById.values()]);
+        }
+
+        if (apiBills && Array.isArray(apiBills) && apiBills.length > 0) {
+          const localBills = get(bills);
+          const localById = new Map(localBills.map((b) => [b.invoiceNumber, b]));
+          const mappedBills: Bill[] = apiBills.map((ab: any) => ({
+            id: ab.billId || `bill-${Date.now()}`,
+            invoiceNumber: ab.invoiceNumber,
+            accountId: ab.accountId,
+            customerName: ab.customerName,
+            billingMonth: ab.billingMonth,
+            billingDate: ab.billingDate ? ab.billingDate.slice(0, 10) : '',
+            dueDate: ab.dueDate ? ab.dueDate.slice(0, 10) : '',
+            planName: ab.planName || '',
+            connectionType: ab.connectionType || 'Broadband',
+            securityDeposit: ab.securityDeposit ?? 0,
+            monthlyRental: ab.monthlyRental ?? 0,
+            hourlyCharges: ab.hourlyCharges ?? 0,
+            discountPercent: ab.discountPercent ?? 0,
+            discountAmount: ab.discountAmount ?? 0,
+            subtotal: ab.subtotal ?? 0,
+            serviceTaxRate: ab.serviceTaxRate ?? 12.24,
+            serviceTaxAmount: ab.serviceTaxAmount ?? 0,
+            totalAmount: ab.totalAmount ?? 0,
+            amountPaid: ab.amountPaid ?? 0,
+            dueAmount: ab.dueAmount ?? 0,
+            status: ab.status || 'Unpaid',
+            paymentHistory: (ab.payments || []).map((p: any) => ({
+              paymentId: p.paymentId,
+              paymentDate: p.paymentDate ? p.paymentDate.slice(0, 10) : '',
+              amountPaid: p.amountPaid,
+              paymentMode: p.paymentMode,
+              referenceNumber: p.referenceNumber || '',
+              recordedBy: p.recordedBy || 'Accounts Cashier',
+            })),
+          }));
+          mappedBills.forEach((b) => localById.set(b.invoiceNumber, { ...localById.get(b.invoiceNumber), ...b }));
+          bills.set([...localById.values()]);
+        }
+      } catch (e) {
+        console.warn('[NexusContext] Background fetch of bills/connections skipped:', e);
+      }
+
+      return true;
     } catch (err) {
       console.warn('[Nexus] Could not reach SQL Server bridge, using local storage state:', err);
     } finally {
@@ -1505,6 +2200,12 @@ function createNexusStore() {
     bills,
     feedbacks,
     settings,
+    // Two-stage approval: branch routing + retail paperwork gate
+    routeOrderToBranch,
+    approveOrderByRetail,
+    rejectOrderByRetail,
+    resubmitOrderToRetail,
+    canTechnicalAssess,
     addPlan,
     updatePlan,
     deletePlan,
@@ -1522,6 +2223,7 @@ function createNexusStore() {
     updateInventoryItem,
     deleteInventoryItem,
     placeOrder,
+    assignTechnicianToOrder,
     updateOrderStatus,
     provisionConnectionForOrder,
     updateConnectionStatus,
