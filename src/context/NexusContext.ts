@@ -34,6 +34,7 @@ import {
   createInventoryItemApi,
   deleteInventoryItemApi,
   createEquipmentApi,
+  updateEquipmentApi,
   createBillApi,
   updateBillApi,
   recordPaymentApi,
@@ -2010,30 +2011,36 @@ function createNexusStore() {
 
   // ---- Equipment Handlers ----
   const addEquipment = async (eq: Omit<Equipment, 'id'>) => {
-    try {
-      const created = await createEquipmentApi({
-        serialNumber: eq.serialNumber,
-        macAddress: eq.macAddress,
-        deviceModel: eq.deviceModel,
-        deviceType: eq.deviceType,
-        firmwareVersion: eq.firmwareVersion,
-        status: eq.status || 'In Stock',
-      });
-      const newEq: Equipment = {
-        ...eq,
-        id: created.equipmentId || `eq-${Date.now()}`,
-      };
-      equipments.update((prev) => [newEq, ...prev]);
-      return newEq;
-    } catch (err) {
-      console.warn('[Nexus] API add equipment failed, saving locally:', err);
-      const fallbackEq = { ...eq, id: `eq-${Date.now()}` };
-      equipments.update((prev) => [fallbackEq, ...prev]);
-      return fallbackEq;
-    }
+    const created = await createEquipmentApi({
+      inventoryId: eq.inventoryId,
+      storeId: eq.storeId,
+      serialNumber: eq.serialNumber,
+      macAddress: eq.macAddress,
+      deviceModel: eq.deviceModel,
+      deviceType: eq.deviceType,
+      firmwareVersion: eq.firmwareVersion,
+      status: eq.status || 'In Stock',
+    });
+    const newEq: Equipment = {
+      ...eq,
+      id: created.equipmentId || `eq-${Date.now()}`,
+    };
+    equipments.update((prev) => [newEq, ...prev]);
+    return newEq;
   };
 
-  const updateEquipment = (id: string, updated: Partial<Equipment>) => {
+  const updateEquipment = async (id: string, updated: Partial<Equipment>) => {
+    await updateEquipmentApi(id, {
+      serialNumber: updated.serialNumber,
+      macAddress: updated.macAddress,
+      deviceModel: updated.deviceModel,
+      deviceType: updated.deviceType,
+      storeId: updated.storeId,
+      status: updated.status,
+      firmwareVersion: updated.firmwareVersion,
+      assignedTechnicianId: updated.assignedTechnicianId,
+      installedDate: updated.installedDate,
+    });
     equipments.update((prev) => prev.map((eq) => (eq.id === id ? { ...eq, ...updated } : eq)));
   };
 

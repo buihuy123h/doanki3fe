@@ -172,8 +172,8 @@
     retailShopAssigned: "Downtown Flagship (SH-01)",
     status: "Active" as Employee["status"],
     dateOfJoining: new Date().toISOString().slice(0, 10),
-    password: "",
-    showPassword: false,
+    password: "1234567890",
+    showPassword: true,
   });
 
   // Vendor Modal State
@@ -762,8 +762,8 @@
           emp.retailShopAssigned || "Downtown Flagship (SH-01)",
         status: emp.status,
         dateOfJoining: emp.dateOfJoining,
-        password: "",
-        showPassword: false,
+        password: "1234567890",
+        showPassword: true,
       };
     } else {
       editingEmployee = null;
@@ -777,8 +777,8 @@
         retailShopAssigned: "Headquarters (General)",
         status: "Active",
         dateOfJoining: new Date().toISOString().slice(0, 10),
-        password: "",
-        showPassword: false,
+        password: "1234567890",
+        showPassword: true,
       };
     }
     isEmployeeModalOpen = true;

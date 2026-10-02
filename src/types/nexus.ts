@@ -372,6 +372,7 @@ export interface Equipment {
   firmwareVersion: string;
   status: EquipmentStatus;
   assignedTechnician?: string;
+  assignedTechnicianId?: string;
   installedDate?: string;
   /** Kho / chi nhánh đang giữ thiết bị — lấy từ StoreName của backend. */
   branchOutlet?: string;

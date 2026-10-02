@@ -314,6 +314,7 @@ export async function createInventoryItemApi(data: {
 
 export async function createEquipmentApi(data: {
   equipmentId?: string;
+  inventoryId?: string;
   serialNumber?: string;
   macAddress?: string;
   deviceModel: string;
@@ -328,6 +329,7 @@ export async function createEquipmentApi(data: {
     headers: { 'Content-Type': 'application/json', ...authHeaders() },
     body: JSON.stringify({
       equipmentId: data.equipmentId || `EQ-${Date.now().toString().slice(-8)}`,
+      inventoryId: data.inventoryId,
       serialNumber: data.serialNumber,
       macAddress: data.macAddress,
       deviceModel: data.deviceModel,
@@ -341,6 +343,32 @@ export async function createEquipmentApi(data: {
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.message || `Lỗi đăng ký thiết bị vào CSDL (HTTP ${res.status})`);
+  }
+  return await res.json();
+}
+
+export async function updateEquipmentApi(
+  equipmentId: string,
+  data: {
+    serialNumber?: string;
+    macAddress?: string;
+    deviceModel?: string;
+    deviceType?: string;
+    storeId?: string;
+    status?: string;
+    firmwareVersion?: string;
+    assignedTechnicianId?: string;
+    installedDate?: string;
+  },
+) {
+  const res = await fetch(`${API_BASE_URL}/api/Technical/equipment/${encodeURIComponent(equipmentId)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Lỗi cập nhật thiết bị (HTTP ${res.status})`);
   }
   return await res.json();
 }
@@ -1154,7 +1182,12 @@ export async function createEquipmentRequestApi(data: {
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `Lỗi gửi yêu cầu nhập hàng (HTTP ${res.status})`);
+    const validationMessage = err.errors
+      ? Object.values(err.errors as Record<string, string[]>).flat().join('; ')
+      : '';
+    throw new Error(
+      validationMessage || err.message || `Lỗi gửi yêu cầu nhập hàng (HTTP ${res.status})`,
+    );
   }
   return await res.json();
 }
